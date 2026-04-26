@@ -4,7 +4,8 @@ SOURCES += \
     $$PWD/CanDriver.cpp \
     $$PWD/CanTiming.cpp \
     $$PWD/GenericCanSetupPage.cpp \
-    $$PWD/GenericLinSetupPage.cpp
+    $$PWD/GenericLinSetupPage.cpp \
+    $$PWD/LinFrameDefaultsDialog.cpp
 
 HEADERS  += \
     $$PWD/BusInterface.h \
@@ -12,7 +13,8 @@ HEADERS  += \
     $$PWD/CanDriver.h \
     $$PWD/CanTiming.h \
     $$PWD/GenericCanSetupPage.h \
-    $$PWD/GenericLinSetupPage.h
+    $$PWD/GenericLinSetupPage.h \
+    $$PWD/LinFrameDefaultsDialog.h
 
 FORMS += \
     $$PWD/GenericCanSetupPage.ui \

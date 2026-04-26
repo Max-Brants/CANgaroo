@@ -27,6 +27,7 @@ public slots:
 private slots:
     void updateUI();
     void onLdfSelected(int index);
+    void onConfigureFrameDefaults();
 
 private:
     Ui::GenericLinSetupPage *ui;

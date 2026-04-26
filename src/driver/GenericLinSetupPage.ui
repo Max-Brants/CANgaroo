@@ -367,6 +367,32 @@
         </item>
        </layout>
       </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="laFrameDefaultsLabel">
+        <property name="font">
+         <font>
+          <bold>true</bold>
+          <kerning>false</kerning>
+         </font>
+        </property>
+        <property name="text">
+         <string>Frame Defaults:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QPushButton" name="pbFrameDefaults">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Configure...</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

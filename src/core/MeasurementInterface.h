@@ -21,7 +21,9 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QDomDocument>
+#include <QMap>
 
 #include "driver/CanDriver.h"
 #include "driver/BusInterface.h"
@@ -79,6 +81,10 @@ public:
 
     uint16_t linJitterUs() const;
     void setLinJitterUs(uint16_t us);
+
+    const QMap<uint8_t, QByteArray> &linFrameDefaults() const;
+    QMap<uint8_t, QByteArray>       &linFrameDefaultsRef();
+    void setLinFrameDefaults(const QMap<uint8_t, QByteArray> &defaults);
 
     void cloneFrom(MeasurementInterface &origin);
     bool loadXML(Backend &backend, QDomElement &el);
@@ -180,4 +186,6 @@ private:
     QString            _linSlaveNode;
     uint8_t            _linTimebaseMs {5};
     uint16_t           _linJitterUs   {0};
+
+    QMap<uint8_t, QByteArray> _linFrameDefaults;
 };

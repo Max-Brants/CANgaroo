@@ -19,7 +19,10 @@
 
 #include "GenericLinSetupPage.h"
 #include "ui_GenericLinSetupPage.h"
+#include "LinFrameDefaultsDialog.h"
 #include "core/Backend.h"
+
+#include <QPushButton>
 #include "core/DBC/LinDb.h"
 #include "core/MeasurementInterface.h"
 #include "core/MeasurementNetwork.h"
@@ -52,6 +55,7 @@ GenericLinSetupPage::GenericLinSetupPage(QWidget *parent)
         updateUI();
     });
     connect(ui->cbSlaveNode,      &QComboBox::currentIndexChanged, this, [this]() { updateUI(); });
+    connect(ui->pbFrameDefaults,  &QPushButton::clicked,           this, &GenericLinSetupPage::onConfigureFrameDefaults);
 }
 
 GenericLinSetupPage::~GenericLinSetupPage()
@@ -260,6 +264,27 @@ void GenericLinSetupPage::updateLdfInfo(int ldfIndex)
     ui->cbSlaveNode->setCurrentIndex(slaveIdx >= 0 ? slaveIdx : 0);
 
     _enableUiUpdates = wasUpdating;
+}
+
+void GenericLinSetupPage::onConfigureFrameDefaults()
+{
+    if (!_mi || !_network)
+        return;
+
+    const int ldfIdx = ui->cbLdfSelect->currentIndex();
+    if (ldfIdx < 0 || ldfIdx >= _network->_linDbs.size())
+        return;
+
+    const auto &ldb = _network->_linDbs.at(ldfIdx);
+
+    QString nodeName;
+    if (ui->rbMaster->isChecked())
+        nodeName = ldb->masterNode();
+    else if (ui->rbSlave->isChecked())
+        nodeName = ui->cbSlaveNode->currentText();
+
+    LinFrameDefaultsDialog dlg(ldb.get(), nodeName, _mi->linFrameDefaultsRef(), this);
+    dlg.exec();
 }
 
 Backend &GenericLinSetupPage::backend()

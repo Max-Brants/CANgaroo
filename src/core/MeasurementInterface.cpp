@@ -101,6 +101,20 @@ bool MeasurementInterface::loadXML(Backend &backend, QDomElement &el)
     _linTimebaseMs = static_cast<uint8_t>(el.attribute("lin-timebase-ms", "5").toUInt());
     _linJitterUs   = static_cast<uint16_t>(el.attribute("lin-jitter-us", "0").toUInt());
 
+    _linFrameDefaults.clear();
+    const QDomElement fdsEl = el.firstChildElement(QStringLiteral("lin-frame-defaults"));
+    if (!fdsEl.isNull())
+    {
+        QDomElement fdEl = fdsEl.firstChildElement(QStringLiteral("frame"));
+        while (!fdEl.isNull())
+        {
+            const uint8_t id   = static_cast<uint8_t>(fdEl.attribute(QStringLiteral("id"), QStringLiteral("0")).toUInt());
+            const QByteArray d = QByteArray::fromHex(fdEl.attribute(QStringLiteral("data")).toLatin1());
+            _linFrameDefaults.insert(id, d);
+            fdEl = fdEl.nextSiblingElement(QStringLiteral("frame"));
+        }
+    }
+
     return true;
 }
 
@@ -151,6 +165,19 @@ bool MeasurementInterface::saveXML(Backend &backend, QDomDocument &xml, QDomElem
     root.setAttribute("lin-slave-node", _linSlaveNode);
     root.setAttribute("lin-timebase-ms", _linTimebaseMs);
     root.setAttribute("lin-jitter-us",   _linJitterUs);
+
+    if (!_linFrameDefaults.isEmpty())
+    {
+        QDomElement fdsEl = xml.createElement(QStringLiteral("lin-frame-defaults"));
+        for (auto it = _linFrameDefaults.constBegin(); it != _linFrameDefaults.constEnd(); ++it)
+        {
+            QDomElement fdEl = xml.createElement(QStringLiteral("frame"));
+            fdEl.setAttribute(QStringLiteral("id"),   it.key());
+            fdEl.setAttribute(QStringLiteral("data"), QString::fromLatin1(it.value().toHex()));
+            fdsEl.appendChild(fdEl);
+        }
+        root.appendChild(fdsEl);
+    }
 
     return true;
 }
@@ -373,3 +400,7 @@ void    MeasurementInterface::setLinTimebaseMs(uint8_t ms) { _linTimebaseMs = ms
 
 uint16_t MeasurementInterface::linJitterUs() const { return _linJitterUs; }
 void     MeasurementInterface::setLinJitterUs(uint16_t us) { _linJitterUs = us; }
+
+const QMap<uint8_t, QByteArray> &MeasurementInterface::linFrameDefaults() const { return _linFrameDefaults; }
+QMap<uint8_t, QByteArray>       &MeasurementInterface::linFrameDefaultsRef()    { return _linFrameDefaults; }
+void MeasurementInterface::setLinFrameDefaults(const QMap<uint8_t, QByteArray> &defaults) { _linFrameDefaults = defaults; }
