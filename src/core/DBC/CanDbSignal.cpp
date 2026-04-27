@@ -21,6 +21,8 @@
 
 #include "CanDbSignal.h"
 
+#include <cmath>
+
 CanDbSignal::CanDbSignal(CanDbMessage *parent)
   : _parent(parent),
     _startBit(0),
@@ -228,6 +230,23 @@ bool CanDbSignal::isPresentInMessage(const BusMessage &msg) const
 uint64_t CanDbSignal::extractRawDataFromMessage(const BusMessage &msg) const
 {
     return msg.extractRawSignal(startBit(), length(), isBigEndian());
+}
+
+void CanDbSignal::injectRawSignalIntoMessage(BusMessage &msg, uint64_t rawValue) const
+{
+    msg.injectRawSignal(startBit(), length(), isBigEndian(), rawValue);
+}
+
+void CanDbSignal::injectPhysicalIntoMessage(BusMessage &msg, double physicalValue) const
+{
+    double rawDouble = (physicalValue - _offset) / _factor;
+    uint64_t rawValue;
+    if (_isUnsigned) {
+        rawValue = static_cast<uint64_t>(std::round(rawDouble < 0.0 ? 0.0 : rawDouble));
+    } else {
+        rawValue = static_cast<uint64_t>(static_cast<int64_t>(std::round(rawDouble)));
+    }
+    injectRawSignalIntoMessage(msg, rawValue);
 }
 
 

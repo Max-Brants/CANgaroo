@@ -87,6 +87,9 @@ public:
     double convertRawValueToPhysical(const uint64_t rawValue) const;
     double extractPhysicalFromMessage(const BusMessage &msg) const;
 
+    void injectRawSignalIntoMessage(BusMessage &msg, uint64_t rawValue) const;
+    void injectPhysicalIntoMessage(BusMessage &msg, double physicalValue) const;
+
 
 private:
     CanDbMessage *_parent;

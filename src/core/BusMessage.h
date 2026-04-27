@@ -90,6 +90,7 @@ public:
     [[nodiscard]] const uint8_t *getData() const;
 
     [[nodiscard]] uint64_t extractRawSignal(uint16_t start_bit, uint16_t length, bool isBigEndian) const;
+    void injectRawSignal(uint16_t start_bit, uint16_t length, bool isBigEndian, uint64_t value);
 
     void setDataAt(uint8_t position, uint8_t data);
     void setData(const uint8_t d0);

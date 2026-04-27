@@ -46,7 +46,9 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
-#include <expected>    // C++23; fall back below for C++20
+#ifdef __cpp_lib_expected
+#include <expected>
+#endif
 #include <format>
 #include <fstream>
 #include <functional>

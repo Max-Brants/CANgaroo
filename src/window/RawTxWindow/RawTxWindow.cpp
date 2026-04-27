@@ -48,6 +48,7 @@ RawTxWindow::RawTxWindow(QWidget *parent, Backend &backend)
     , _currentDbMsg(nullptr)
     , _slavedInterfaceId(0)
     , _settingMessage(false)
+    , _updatingSignals(false)
 {
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(4, 4, 4, 4);
@@ -139,8 +140,8 @@ RawTxWindow::RawTxWindow(QWidget *parent, Backend &backend)
     _signalTable->setHorizontalHeaderLabels({tr("Signal"), tr("Value"), tr("Unit")});
     _signalTable->horizontalHeader()->setStretchLastSection(true);
     _signalTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    _signalTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    _signalTable->setSelectionMode(QAbstractItemView::NoSelection);
+    _signalTable->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::AnyKeyPressed);
+    _signalTable->setSelectionMode(QAbstractItemView::SingleSelection);
 
     auto *splitter = new QSplitter(Qt::Vertical, this);
     splitter->addWidget(_dataTable);
@@ -195,6 +196,7 @@ RawTxWindow::RawTxWindow(QWidget *parent, Backend &backend)
     connect(_cbBRS, &QCheckBox::stateChanged, this, &RawTxWindow::onFieldChanged);
 
     connect(_dataTable, &QTableWidget::cellChanged, this, &RawTxWindow::onFieldChanged);
+    connect(_signalTable, &QTableWidget::cellChanged, this, &RawTxWindow::onSignalValueChanged);
 
     // Initial state
     updateDataGrid();
@@ -313,19 +315,81 @@ void RawTxWindow::onFieldChanged()
 
 void RawTxWindow::updateSignalTable()
 {
-    _signalTable->setRowCount(0);
-    if (!_currentDbMsg) { return; }
+    _signalTable->blockSignals(true);
+
+    if (!_currentDbMsg) {
+        _signalTable->setRowCount(0);
+        _signalTable->blockSignals(false);
+        return;
+    }
 
     CanDbSignalList sigList = _currentDbMsg->getSignals();
-    _signalTable->setRowCount(sigList.size());
 
-    for (int i = 0; i < sigList.size(); i++) {
-        CanDbSignal *sig = sigList[i];
-        double val = sig->extractPhysicalFromMessage(_can_msg);
-        _signalTable->setItem(i, 0, new QTableWidgetItem(sig->name()));
-        _signalTable->setItem(i, 1, new QTableWidgetItem(QString::number(val, 'f', 2)));
-        _signalTable->setItem(i, 2, new QTableWidgetItem(sig->getUnit()));
+    if (_signalTable->rowCount() != sigList.size()) {
+        // Full rebuild when the signal structure changes (new message selected)
+        _signalTable->setRowCount(0);
+        _signalTable->setRowCount(sigList.size());
+
+        for (int i = 0; i < sigList.size(); i++) {
+            CanDbSignal *sig = sigList[i];
+
+            auto *nameItem = new QTableWidgetItem(sig->name());
+            nameItem->setFlags(nameItem->flags() & ~Qt::ItemIsEditable);
+            _signalTable->setItem(i, 0, nameItem);
+
+            _signalTable->setItem(i, 1, new QTableWidgetItem(QString::number(sig->extractPhysicalFromMessage(_can_msg), 'f', 2)));
+
+            auto *unitItem = new QTableWidgetItem(sig->getUnit());
+            unitItem->setFlags(unitItem->flags() & ~Qt::ItemIsEditable);
+            _signalTable->setItem(i, 2, unitItem);
+        }
+    } else {
+        // Update values in-place — avoids destroying the active editor item
+        for (int i = 0; i < sigList.size(); i++) {
+            double val = sigList[i]->extractPhysicalFromMessage(_can_msg);
+            if (QTableWidgetItem *item = _signalTable->item(i, 1)) {
+                item->setText(QString::number(val, 'f', 2));
+            }
+        }
     }
+
+    _signalTable->blockSignals(false);
+}
+
+void RawTxWindow::onSignalValueChanged(int row, int col)
+{
+    if (col != 1 || !_currentDbMsg || _settingMessage || _updatingSignals) { return; }
+
+    CanDbSignalList sigList = _currentDbMsg->getSignals();
+    if (row < 0 || row >= sigList.size()) { return; }
+
+    QTableWidgetItem *item = _signalTable->item(row, col);
+    if (!item) { return; }
+
+    bool ok;
+    double value = item->text().toDouble(&ok);
+    if (!ok) { return; }
+
+    _updatingSignals = true;
+
+    sigList[row]->injectPhysicalIntoMessage(_can_msg, value);
+
+    _dataTable->blockSignals(true);
+    int dlc = _can_msg.getLength();
+    for (int i = 0; i < dlc && i < 64; i++) {
+        int r = i / DataCols;
+        int c = i % DataCols;
+        QTableWidgetItem *dataItem = _dataTable->item(r, c);
+        if (dataItem) {
+            dataItem->setText(QString("%1").arg(_can_msg.getByte(i), 2, 16, QChar('0')).toUpper());
+        }
+    }
+    _dataTable->blockSignals(false);
+
+    updateSignalTable();
+    emit messageUpdated(_can_msg);
+
+    _updatingSignals = false;
 }
 
 void RawTxWindow::setMessage(const BusMessage &msg, const QString &name, BusInterfaceId interfaceId, CanDbMessage *dbMsg)
@@ -411,9 +475,9 @@ void RawTxWindow::setMessage(const BusMessage &msg, const QString &name, BusInte
     _dataTable->blockSignals(false);
 
     updateDataGrid();
-    updateSignalTable();
 
     _settingMessage = false;
+    onFieldChanged(); // populates _can_msg from the current UI state
 }
 
 bool RawTxWindow::saveXML(Backend &backend, QDomDocument &xml, QDomElement &root)

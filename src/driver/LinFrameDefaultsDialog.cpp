@@ -111,7 +111,7 @@ void LinFrameDefaultsDialog::buildUi()
 
     // Bottom button row
     auto *btnRow = new QHBoxLayout;
-    auto *resetBtn = new QPushButton(tr("Reset to Init Values"), this);
+    auto *resetBtn = new QPushButton(tr("Reset Values"), this);
     btnRow->addWidget(resetBtn);
     btnRow->addStretch();
     auto *btnBox = new QDialogButtonBox(QDialogButtonBox::Ok, this);

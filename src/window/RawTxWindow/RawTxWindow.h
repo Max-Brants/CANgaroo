@@ -53,6 +53,7 @@ signals:
 
 private slots:
     void onFieldChanged();
+    void onSignalValueChanged(int row, int col);
 
 private:
     Backend &_backend;
@@ -60,6 +61,7 @@ private:
     CanDbMessage *_currentDbMsg;
     BusInterfaceId _slavedInterfaceId;
     bool _settingMessage;
+    bool _updatingSignals;
 
     QLineEdit *_editId;
     QComboBox *_comboDlc;

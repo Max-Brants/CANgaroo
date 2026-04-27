@@ -229,6 +229,44 @@ uint64_t BusMessage::extractRawSignal(uint16_t start_bit, uint16_t length, bool 
     return data;
 }
 
+void BusMessage::injectRawSignal(uint16_t start_bit, uint16_t length, bool isBigEndian, uint64_t value)
+{
+    if (length == 0 || start_bit >= sizeof(_u8) * 8) return;
+
+    int byte_offset = start_bit / 8;
+    int bit_shift = start_bit % 8;
+
+    uint64_t mask = (length < 64) ? ((1ULL << length) - 1ULL) : ~0ULL;
+    value &= mask;
+
+    uint8_t temp[8] = {0};
+    int copy_len = static_cast<int>(sizeof(_u8)) - byte_offset;
+    if (copy_len > 8) copy_len = 8;
+    if (copy_len > 0)
+        memcpy(temp, _u8 + byte_offset, static_cast<size_t>(copy_len));
+
+    uint64_t data_raw;
+    memcpy(&data_raw, temp, sizeof(data_raw));
+    data_raw = le64toh(data_raw);
+
+    if (isBigEndian && (length > 8)) {
+        uint64_t to_inject = __builtin_bswap64(value << (64 - length));
+        data_raw &= ~(mask << bit_shift);
+        data_raw |= (to_inject & mask) << bit_shift;
+    } else {
+        data_raw &= ~(mask << bit_shift);
+        data_raw |= value << bit_shift;
+    }
+
+    data_raw = htole64(data_raw);
+    memcpy(temp, &data_raw, sizeof(data_raw));
+
+    for (int i = 0; i < copy_len; i++) {
+        if (byte_offset + i < _dlc)
+            _u8[byte_offset + i] = temp[i];
+    }
+}
+
 void BusMessage::setDataAt(uint8_t position, uint8_t data)
 {
     if(position < 64)
