@@ -291,6 +291,22 @@ jobs:
             Write-Warning "Failed to copy canlib32.lib: $_"
           }
 
+      - name: Download ZsCanFd DLLs
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://files-accl.zohoexternal.in/public/workdrive-external/download/vg4j6fe5343da544d4d78876807400716c283?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCwc-13uP6TI%22%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D" `
+            -OutFile "$env:TEMP\zscanfd-package.zip"
+          Expand-Archive -Path "$env:TEMP\zscanfd-package.zip" `
+            -DestinationPath "src/driver/ZsCanFdDriver/zscanfd-dll" `
+            -Force
+          Invoke-WebRequest `
+            -Uri "https://files-accl.zohoexternal.in/public/workdrive-external/download/5twqz7da53b7da5804c958ca079ba061bd493?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCw7-13uP6TI%22%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D"`
+            -OutFile "$env:TEMP\qt-zscanfd.zip"
+          Expand-Archive -Path "$env:TEMP\qt-zscanfd.zip" `
+            -DestinationPath "src/driver/ZsCanFdDriver/qt-zscanfd-dll" `
+            -Force
+
       - name: Verify Qt6 installation
         run: |
           qmake6 --version
@@ -298,7 +314,7 @@ jobs:
 
       - name: Configure build (Qt6 qmake)
         run: |
-          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan
+          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan CONFIG+=zscanfd
 
       - name: Build
         run: |
@@ -376,6 +392,8 @@ jobs:
         run: |
           cp src/driver/KvaserDriver/canlib-sdk/Bin/canlib32.dll dist/
           cp src/driver/PeakCanDriver/pcan-basic-api/x64/PCANBasic.dll dist/
+          cp src/driver/ZsCanFdDriver/zscanfd-dll/zscanfd-package/release/zscanfd.dll dist/
+          cp src/driver/ZsCanFdDriver/qt-zscanfd-dll/qtzscanfdbus.dll dist/canbus
 
       - name: Verify missing DLLs
         run: |

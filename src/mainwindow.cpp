@@ -78,6 +78,12 @@
 #include "driver/KvaserDriver/KvaserDriver.h"
 #endif
 
+#if defined(_WIN32)
+#ifdef ZSCANFD_DRIVER
+#include "driver/ZsCanFdDriver/ZsCanFdDriver.h"
+#endif
+#endif
+
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent),
                                           ui(new Ui::MainWindow)
@@ -194,6 +200,12 @@ void MainWindow::initDrivers()
 
 #ifdef VECTOR_DRIVER
     Backend::instance().addCanDriver(*(new VectorDriver(Backend::instance())));
+#endif
+
+#if defined(_WIN32)
+#ifdef ZSCANFD_DRIVER
+    Backend::instance().addCanDriver(*(new ZsCanFdDriver(Backend::instance())));
+#endif
 #endif
 
     if (CANblasterEnabled)
