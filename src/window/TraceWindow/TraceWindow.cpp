@@ -32,6 +32,7 @@
 #include "window/ConditionalLoggingDialog.h"
 
 #include "AggregatedTraceViewModel.h"
+#include "DataColumnDelegate.h"
 #include "LinearTraceViewModel.h"
 #include "TraceFilterDialog.h"
 #include "TraceFilterModel.h"
@@ -91,6 +92,7 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
         tree->setColumnWidth(BaseTraceViewModel::column_dlc, 50);
         tree->setColumnWidth(BaseTraceViewModel::column_data, 260);
         tree->setColumnWidth(BaseTraceViewModel::column_comment, 120);
+        tree->setItemDelegateForColumn(BaseTraceViewModel::column_data, new DataColumnDelegate(tree));
 
         connect(_filterModels[i], &QAbstractItemModel::rowsInserted, this, &TraceWindow::onRowsInserted);
     }
@@ -343,8 +345,6 @@ void TraceWindow::doScrollToBottom()
         }
     }
 }
-
-
 
 void TraceWindow::on_cbTimestampMode_currentIndexChanged(int index)
 {

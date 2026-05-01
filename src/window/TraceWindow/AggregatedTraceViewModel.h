@@ -66,6 +66,7 @@ private:
 protected:
     QVariant data_DisplayRole(const QModelIndex &index, int role) const override;
     QVariant data_TextColorRole(const QModelIndex &index, int role) const override;
+    QVariant data_ChangedBytesRole(const QModelIndex &index) const override;
 
 private slots:
     void createItem(const BusMessage &msg);

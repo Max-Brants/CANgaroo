@@ -49,6 +49,10 @@ public:
         column_count
     };
 
+    enum CustomRole {
+        ChangedBytesRole = Qt::UserRole + 1
+    };
+
 public:
     BaseTraceViewModel(Backend &backend);
     int columnCount(const QModelIndex &parent) const override;
@@ -70,6 +74,7 @@ protected:
     virtual QVariant data_TextAlignmentRole(const QModelIndex &index, int role) const;
     virtual QVariant data_TextColorRole(const QModelIndex &index, int role) const;
     virtual QVariant data_TextColorRole_Signal(const QModelIndex &index, int role, const BusMessage &msg) const;
+    virtual QVariant data_ChangedBytesRole(const QModelIndex &index) const;
 
     QVariant formatTimestamp(timestamp_mode_t mode, const BusMessage &currentMsg, const BusMessage &lastMsg) const;
 

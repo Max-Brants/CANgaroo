@@ -62,9 +62,8 @@ private:
     std::map<uint32_t, std::shared_ptr<UnifiedTraceItem>> m_j1939AggregatedMap;
     uint32_t getJ1939Key(const ProtocolMessage& pmsg) const;
 
-    // Tracks the previous timestamp per unique message key (ID + direction + interface)
-    // so that delta mode shows the interval between same-ID messages, not adjacent rows.
-    QHash<uint64_t, uint64_t> m_prevTimestampByKey;
+    QHash<uint64_t, uint64_t>   m_prevTimestampByKey;
+    QHash<uint64_t, BusMessage> m_prevMessageByKey;
     static uint64_t makeDeltaKey(const BusMessage &msg);
     static uint64_t makeDeltaKey(const ProtocolMessage &pmsg);
 

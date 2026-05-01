@@ -27,6 +27,9 @@
 #define VERSION_STRING "dev"
 #endif
 
+// Workspace file format version. Increment when breaking changes are made.
+static constexpr int WORKSPACE_VERSION = 1;
+
 #include <QMainWindow>
 #include <QList>
 #include "core/Backend.h"
