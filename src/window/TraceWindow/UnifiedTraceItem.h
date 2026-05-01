@@ -36,6 +36,8 @@ public:
     void setTimestamp(uint64_t ts) { m_timestamp = ts; }
     uint64_t prevSameIdTimestamp() const { return m_prevSameIdTimestamp; }
     void setPrevSameIdTimestamp(uint64_t ts) { m_prevSameIdTimestamp = ts; }
+    const BusMessage& prevSameIdFrame() const { return m_prevSameIdFrame; }
+    void setPrevSameIdFrame(const BusMessage &msg) { m_prevSameIdFrame = msg; }
 
 private:
     QVector<std::shared_ptr<UnifiedTraceItem>> m_childItems;
@@ -52,5 +54,6 @@ private:
     uint32_t m_globalIndex = 0;
     uint64_t m_timestamp = 0;
     uint64_t m_prevSameIdTimestamp = 0;
+    BusMessage m_prevSameIdFrame;
     int m_row = -1;
 };

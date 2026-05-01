@@ -537,6 +537,8 @@ void MainWindow::loadWorkspaceFromFile(const QString &filename)
         return;
     }
 
+    int workspaceVersion = root.attribute("workspace-version", QString::number(WORKSPACE_VERSION)).toInt();
+
     QDomElement tabsRoot = root.firstChildElement("tabs");
     QDomNodeList tabs = tabsRoot.elementsByTagName("tab");
     for (int i = 0; i < tabs.length(); i++)
@@ -566,6 +568,8 @@ bool MainWindow::saveWorkspaceToFile(const QString &filename)
 {
     QDomDocument doc;
     QDomElement root = doc.createElement("cangaroo-workspace");
+    root.setAttribute("cangaroo-version", VERSION_STRING);
+    root.setAttribute("workspace-version", WORKSPACE_VERSION);
     doc.appendChild(root);
 
     QDomElement tabsRoot = doc.createElement("tabs");

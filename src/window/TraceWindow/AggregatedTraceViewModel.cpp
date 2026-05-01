@@ -264,6 +264,29 @@ QVariant AggregatedTraceViewModel::data_DisplayRole(const QModelIndex &index, in
     }
 }
 
+QVariant AggregatedTraceViewModel::data_ChangedBytesRole(const QModelIndex &index) const
+{
+    if (index.column() != column_data) { return QVariant(); }
+
+    AggregatedTraceViewItem *item = static_cast<AggregatedTraceViewItem *>(index.internalPointer());
+    if (!item || item->parent() != _rootItem) { return QVariant(); }
+
+    const BusMessage &cur  = item->_lastmsg;
+    const BusMessage &prev = item->_prevmsg;
+    if (prev.getLength() == 0) { return QVariant(); }
+
+    uint64_t mask = 0;
+    const int len = qMin(cur.getLength(), prev.getLength());
+    for (int i = 0; i < len; ++i) {
+        if (cur.getData()[i] != prev.getData()[i])
+            mask |= (1ULL << i);
+    }
+    for (int i = len; i < cur.getLength(); ++i)
+        mask |= (1ULL << i);
+
+    return QVariant::fromValue(mask);
+}
+
 QVariant AggregatedTraceViewModel::data_TextColorRole(const QModelIndex &index, int role) const
 {
     (void) role;

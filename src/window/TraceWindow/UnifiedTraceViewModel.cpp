@@ -118,6 +118,24 @@ QVariant UnifiedTraceViewModel::data(const QModelIndex &index, int role) const
             return data_TextColorRole(index, role);
         case Qt::TextAlignmentRole:
             return BaseTraceViewModel::data_TextAlignmentRole(index, role);
+        case ChangedBytesRole:
+        {
+            if (index.column() != column_data) { return QVariant(); }
+            UnifiedTraceItem *item = static_cast<UnifiedTraceItem*>(index.internalPointer());
+            if (!item || item->isProtocol() || item->isMetadata()) { return QVariant(); }
+            const BusMessage &cur  = item->rawFrame();
+            const BusMessage &prev = item->prevSameIdFrame();
+            if (prev.getLength() == 0) { return QVariant(); }
+            uint64_t mask = 0;
+            const int len = qMin(cur.getLength(), prev.getLength());
+            for (int i = 0; i < len; ++i) {
+                if (cur.getData()[i] != prev.getData()[i])
+                    mask |= (1ULL << i);
+            }
+            for (int i = len; i < cur.getLength(); ++i)
+                mask |= (1ULL << i);
+            return QVariant::fromValue(mask);
+        }
         default:
             return BaseTraceViewModel::data(index, role);
     }
@@ -191,6 +209,9 @@ void UnifiedTraceViewModel::processNewMessages()
                 uint64_t dkey = makeDeltaKey(msg);
                 item->setPrevSameIdTimestamp(m_prevTimestampByKey.value(dkey, 0));
                 m_prevTimestampByKey[dkey] = ts;
+
+                item->setPrevSameIdFrame(m_prevMessageByKey.value(dkey));
+                m_prevMessageByKey[dkey] = msg;
 
                 newItems.append(item);
             }
@@ -278,6 +299,7 @@ void UnifiedTraceViewModel::afterClear()
     m_previousRowTimestamp = 0;
     m_j1939AggregatedMap.clear();
     m_prevTimestampByKey.clear();
+    m_prevMessageByKey.clear();
     endResetModel();
 }
 
@@ -293,6 +315,7 @@ void UnifiedTraceViewModel::onSetupChanged()
     m_previousRowTimestamp = 0;
     m_j1939AggregatedMap.clear();
     m_prevTimestampByKey.clear();
+    m_prevMessageByKey.clear();
 
     // Re-process all frames from trace buffer
     // We bypass beginInsertRows by being inside beginResetModel

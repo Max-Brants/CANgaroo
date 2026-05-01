@@ -7,6 +7,7 @@ SOURCES += \
     $$PWD/AggregatedTraceViewItem.cpp \
     $$PWD/UnifiedTraceItem.cpp \
     $$PWD/UnifiedTraceViewModel.cpp \
+    $$PWD/DataColumnDelegate.cpp \
     $$PWD/TraceWindow.cpp \
 
 HEADERS  += \
@@ -18,6 +19,7 @@ HEADERS  += \
     $$PWD/TraceFilterDialog.h \
     $$PWD/UnifiedTraceItem.h \
     $$PWD/UnifiedTraceViewModel.h \
+    $$PWD/DataColumnDelegate.h \
     $$PWD/TraceWindow.h \
     $$PWD/TraceViewTypes.h \
 
