@@ -21,6 +21,12 @@
 
 #pragma once
 
+#include <QMainWindow>
+#include <QList>
+#include "core/Backend.h"
+#include <QTranslator>
+#include <QSettings>
+
 // VERSION_STRING is injected by qmake (DEFINES += VERSION_STRING=...).
 // The fallback keeps IDEs happy when qmake definitions are not available.
 #ifndef VERSION_STRING
@@ -29,12 +35,6 @@
 
 // Workspace file format version. Increment when breaking changes are made.
 static constexpr int WORKSPACE_VERSION = 1;
-
-#include <QMainWindow>
-#include <QList>
-#include "core/Backend.h"
-#include <QTranslator>
-#include <QSettings>
 
 QT_BEGIN_NAMESPACE
 class QAction;

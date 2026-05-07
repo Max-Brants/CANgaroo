@@ -314,8 +314,6 @@ void GrIPInterface::open()
         QThread::msleep(2);
     }
 
-    m_GrIPHandler->SetStatus(true);
-
     if (_manufacturer == CANIL_CAN)
     {
         // Disable the channel before reconfiguring to avoid spurious traffic.
@@ -441,8 +439,6 @@ void GrIPInterface::handleSerialError(QSerialPort::SerialPortError error)
 void GrIPInterface::close()
 {
     _isOpen = false;
-
-    m_GrIPHandler->SetStatus(false);
 
     if (_manufacturer == CANIL_CAN)
     {
