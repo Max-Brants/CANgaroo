@@ -81,6 +81,13 @@
 #if defined(_WIN32)
 #ifdef ZSCANFD_DRIVER
 #include "driver/ZsCanFdDriver/ZsCanFdDriver.h"
+#include <QFile>
+#include <QDir>
+#include <QEventLoop>
+#include <QProcess>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #endif
 #endif
 
@@ -141,6 +148,12 @@ void MainWindow::initActions()
     connect(ui->btnSetupMeasurement, &QPushButton::released, this, &MainWindow::showSetupDialog);
 
     connect(ui->actionReload_Interfaces, &QAction::triggered, this, &MainWindow::reloadInterfaces);
+
+#if defined(_WIN32) && defined(ZSCANFD_DRIVER)
+    connect(ui->actionDownloadZsCanFdDlls, &QAction::triggered, this, &MainWindow::downloadZsCanFdDlls);
+#else
+    ui->actionDownloadZsCanFdDlls->setEnabled(false);
+#endif
 
     connect(&backend(), &Backend::beginMeasurement, this, &MainWindow::updateMeasurementActions);
     connect(&backend(), &Backend::endMeasurement, this, &MainWindow::updateMeasurementActions);
@@ -205,6 +218,7 @@ void MainWindow::initDrivers()
 #if defined(_WIN32)
 #ifdef ZSCANFD_DRIVER
     Backend::instance().addCanDriver(*(new ZsCanFdDriver(Backend::instance())));
+    QTimer::singleShot(0, this, &MainWindow::checkZsCanFdDlls);
 #endif
 #endif
 
@@ -1144,6 +1158,144 @@ void MainWindow::showSettingsDialog()
     // Apply clear trace on start setting.
     settings.setValue("ui/clearTraceOnStart", dlg.clearTraceOnStart());
 }
+
+#if defined(_WIN32)
+#ifdef ZSCANFD_DRIVER
+void MainWindow::checkZsCanFdDlls()
+{
+    if (settings.value("mainWindow/zscanfdDllPromptDisabled", false).toBool())
+        return;
+
+    const QString appDir = QCoreApplication::applicationDirPath();
+    if (QFile::exists(appDir + "/zscanfd.dll") &&
+        QFile::exists(appDir + "/canbus/qtzscanfdbus.dll"))
+        return;
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("ZsCanFd DLLs not found"));
+    msgBox.setText(tr("The required ZsCanFd DLLs (zscanfd.dll, qtzscanfdbus.dll) "
+                      "were not found next to cangaroo.exe.\n\n"
+                      "Would you like to download them now?"));
+    msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
+    msgBox.setDefaultButton(QMessageBox::Yes);
+
+    auto *dontAsk = new QCheckBox(tr("Don't ask again"), &msgBox);
+    msgBox.setCheckBox(dontAsk);
+
+    const int result = msgBox.exec();
+
+    if (dontAsk->isChecked())
+        settings.setValue("mainWindow/zscanfdDllPromptDisabled", true);
+
+    if (result == QMessageBox::Yes)
+        downloadZsCanFdDlls();
+}
+
+void MainWindow::downloadZsCanFdDlls()
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString tmpDir = QDir::tempPath() + "/cangaroo_zscanfd";
+    QDir().mkpath(tmpDir);
+
+    constexpr auto zscanfdUrl =
+        "https://files-accl.zohoexternal.in/public/workdrive-external/download/"
+        "vg4j6fe5343da544d4d78876807400716c283?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCwc-13uP6TI%22"
+        "%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D";
+    constexpr auto qtPluginUrl =
+        "https://files-accl.zohoexternal.in/public/workdrive-external/download/"
+        "5twqz7da53b7da5804c958ca079ba061bd493?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCw7-13uP6TI%22"
+        "%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D";
+
+    QNetworkAccessManager nam;
+
+    auto downloadFile = [&](const char *url, const QString &destPath) -> bool
+    {
+        QProgressDialog progress(tr("Downloading ZsCanFd DLLs…"), tr("Cancel"), 0, 0, this);
+        progress.setWindowModality(Qt::WindowModal);
+        progress.setMinimumDuration(0);
+        progress.show();
+
+        QNetworkReply *reply = nam.get(QNetworkRequest(QUrl(QString::fromLatin1(url))));
+        QEventLoop loop;
+        connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        connect(reply, &QNetworkReply::downloadProgress,
+                [&](qint64 received, qint64 total)
+                {
+                    if (total > 0)
+                    {
+                        progress.setMaximum(100);
+                        progress.setValue(static_cast<int>(received * 100 / total));
+                    }
+                    QCoreApplication::processEvents();
+                });
+        connect(&progress, &QProgressDialog::canceled, reply, &QNetworkReply::abort);
+        loop.exec();
+
+        if (reply->error() != QNetworkReply::NoError)
+        {
+            QMessageBox::warning(this, tr("Download failed"), reply->errorString());
+            reply->deleteLater();
+            return false;
+        }
+
+        QFile file(destPath);
+        if (!file.open(QIODevice::WriteOnly))
+        {
+            QMessageBox::warning(this, tr("Download failed"),
+                                 tr("Cannot write to: %1").arg(destPath));
+            reply->deleteLater();
+            return false;
+        }
+        file.write(reply->readAll());
+        reply->deleteLater();
+        return true;
+    };
+
+    auto extractZip = [&](const QString &zipPath, const QString &outDir) -> bool
+    {
+        QProcess ps;
+        ps.start("powershell",
+                 {"-Command",
+                  QString("Expand-Archive -Path '%1' -DestinationPath '%2' -Force")
+                      .arg(zipPath, outDir)});
+        if (!ps.waitForFinished(60000) || ps.exitCode() != 0)
+        {
+            QMessageBox::warning(this, tr("Extraction failed"),
+                                 tr("Failed to extract %1").arg(zipPath));
+            return false;
+        }
+        return true;
+    };
+
+    const QString zip1 = tmpDir + "/zscanfd-package.zip";
+    if (!downloadFile(zscanfdUrl, zip1)) return;
+    if (!extractZip(zip1, tmpDir)) return;
+    QFile::remove(appDir + "/zscanfd.dll");
+    if (!QFile::copy(tmpDir + "/zscanfd-package/release/zscanfd.dll", appDir + "/zscanfd.dll"))
+    {
+        QMessageBox::warning(this, tr("Install failed"),
+                             tr("Could not copy zscanfd.dll to application directory."));
+        return;
+    }
+
+    const QString zip2 = tmpDir + "/qt-zscanfd.zip";
+    if (!downloadFile(qtPluginUrl, zip2)) return;
+    if (!extractZip(zip2, tmpDir)) return;
+    QDir().mkpath(appDir + "/canbus");
+    QFile::remove(appDir + "/canbus/qtzscanfdbus.dll");
+    if (!QFile::copy(tmpDir + "/qtzscanfdbus.dll", appDir + "/canbus/qtzscanfdbus.dll"))
+    {
+        QMessageBox::warning(this, tr("Install failed"),
+                             tr("Could not copy qtzscanfdbus.dll to canbus directory."));
+        return;
+    }
+
+    QMessageBox::information(this, tr("Download complete"),
+                             tr("ZsCanFd DLLs installed successfully.\n"
+                                "Please restart CANgaroo to use ZsCanFd devices."));
+}
+#endif
+#endif
 
 void MainWindow::applyFontSize(int pointSize)
 {
