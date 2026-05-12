@@ -1,6 +1,7 @@
 name: Build CANgaroo
 
 on:
+  workflow_dispatch:  # enables manual trigger
   push:
     branches: [ "main", "master" ]
   pull_request:
