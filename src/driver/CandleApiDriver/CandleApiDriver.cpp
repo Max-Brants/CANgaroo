@@ -18,6 +18,7 @@
   along with cangaroo.  If not, see <http://www.gnu.org/licenses/>.
 
 */
+#include "api/candle_defs.h"
 #include "CandleApiDriver.h"
 #include "api/candle.h"
 
@@ -62,7 +63,7 @@ bool CandleApiDriver::update()
                         continue;
                     }
 
-                    wstring devPath(wstring(candle_dev_get_path(dev)));
+                    std::wstring devPath(candle_dev_get_path(dev));
 
                     /* Create one interface per channel */
                     for (uint8_t ch = 0; ch < num_channels; ch++) {
@@ -98,7 +99,7 @@ bool CandleApiDriver::update()
     return true;
 }
 
-CandleApiInterface *CandleApiDriver::findInterface(const wstring &path, uint8_t channel)
+CandleApiInterface *CandleApiDriver::findInterface(const std::wstring &path, uint8_t channel)
 {
     for (auto *intf : getInterfaces()) {
         CandleApiInterface *cif = dynamic_cast<CandleApiInterface*>(intf);
@@ -108,3 +109,5 @@ CandleApiInterface *CandleApiDriver::findInterface(const wstring &path, uint8_t 
     }
     return nullptr;
 }
+
+

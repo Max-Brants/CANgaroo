@@ -1,6 +1,7 @@
 /*
 
   Copyright (c) 2016 Hubert Denkmair <hubert@denkmair.de>
+  Copyright (c) 2026 Schildkroet
 
   This file is part of cangaroo.
 
@@ -25,6 +26,9 @@
 #include "driver/CanDriver.h"
 #include "api/candle.h"
 
+#include <string>
+
+
 class CandleApiInterface;
 class GenericCanSetupPage;
 
@@ -38,7 +42,8 @@ public:
 
 private:
     GenericCanSetupPage *setupPage;
-    CandleApiInterface *findInterface(const wstring &path, uint8_t channel);
+    CandleApiInterface *findInterface(const std::wstring &path, uint8_t channel);
 
 };
+
 

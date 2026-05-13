@@ -83,7 +83,7 @@ CandleApiInterface::CandleApiInterface(CandleApiDriver *driver, candle_handle ha
         << CandleApiTiming(80000000, 2000000, 875,  1,  34,  5)
         << CandleApiTiming(80000000, 4000000, 850,  1,  16,  3)
         << CandleApiTiming(80000000, 5000000, 875,  1,  13,  2)
-        << CandleApiTiming(80000000, 8000000, 800,  1,   7,  2)
+        << CandleApiTiming(80000000, 8000000, 800,  1,   7,  2);
 
     // Timings for 48MHz processors (CANable 0.X)
     _timings
@@ -656,15 +656,9 @@ int CandleApiInterface::getNumTxDropped()
     return 0;
 }
 
-wstring CandleApiInterface::getPath() const
+std::wstring CandleApiInterface::getPath() const
 {
-    return wstring(candle_dev_get_path(_handle));
-}
-
-void CandleApiInterface::update(candle_handle dev)
-{
-    candle_dev_free(_handle);
-    _handle = dev;
+    return std::wstring(candle_dev_get_path(_handle));
 }
 
 QString CandleApiInterface::getVersion()

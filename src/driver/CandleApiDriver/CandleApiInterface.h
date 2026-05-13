@@ -9,12 +9,12 @@
 
 #include <windows.h>
 
+#include <string>
+
 #include "CandleApiTiming.h"
 #include "api/candle.h"
 
 class CandleApiDriver;
-
-using namespace std;
 
 class CandleApiInterface : public BusInterface
 {
@@ -50,7 +50,7 @@ public:
     int getNumTxDropped() override;
 
     QString getVersion();
-    wstring getPath() const;
+    std::wstring getPath() const;
     uint8_t getChannel() const;
 
     bool matches(candle_handle dev, uint8_t channel) const;
