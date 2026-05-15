@@ -20,8 +20,6 @@
 #include "CandleApiInterface.h"
 #include "CandleApiDriver.h"
 
-#include <chrono>
-
 #include <QMutexLocker>
 
 CandleApiInterface::CandleApiInterface(CandleApiDriver *driver,
@@ -30,6 +28,8 @@ CandleApiInterface::CandleApiInterface(CandleApiDriver *driver,
   : BusInterface(reinterpret_cast<CanDriver*>(driver)),
     _hostOffsetStart(0),
     _deviceTicksStart(0),
+    _prevDeviceTs(0),
+    _deviceTsHigh(0),
     _channel(channel),
     _isOpen(false),
     _isFdEnabled(false),
@@ -441,15 +441,24 @@ void CandleApiInterface::open()
     _numTx = 0;
     _numTxErr = 0;
 
-    uint32_t t_dev;
-    if (candle_dev_get_timestamp_us(_sharedDev->handle, &t_dev)) {
-        _hostOffsetStart =
-                _backend.getUsecsAtMeasurementStart() +
-                _backend.getUsecsSinceMeasurementStart();
-        _deviceTicksStart = t_dev;
+    if (firstOpen) {
+        uint32_t t_dev = 0;
+        if (candle_dev_get_timestamp_us(_sharedDev->handle, &t_dev)) {
+            _sharedDev->hostOffsetStart =
+                    _backend.getUsecsAtMeasurementStart() +
+                    _backend.getUsecsSinceMeasurementStart();
+            _sharedDev->deviceTicksStart = t_dev;
+        }
     }
 
     candle_channel_start(_sharedDev->handle, _channel, flags);
+
+    // All channels on the same device share the identical epoch baseline so
+    // that inter-channel timestamps are directly comparable.
+    _hostOffsetStart = _sharedDev->hostOffsetStart;
+    _deviceTicksStart = _sharedDev->deviceTicksStart;
+    _prevDeviceTs = _sharedDev->deviceTicksStart;
+    _deviceTsHigh = 0;
 
     if (firstOpen) {
         _sharedDev->startReader();
@@ -539,8 +548,11 @@ void CandleApiInterface::sendMessage(const BusMessage &msg)
 
         BusMessage txMsg = msg;
         txMsg.setRX(false);
-        auto now = std::chrono::system_clock::now().time_since_epoch();
-        txMsg.setTimestamp_us(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+        uint32_t t_dev = 0;
+        candle_dev_get_timestamp_us(_sharedDev->handle, &t_dev);
+        uint32_t dev_ts = t_dev - _deviceTicksStart;
+        uint64_t ts_us = _hostOffsetStart + dev_ts;
+        txMsg.setTimestamp_us(static_cast<int64_t>(ts_us));
         QMutexLocker lock(&_txMutex);
         _txMsgList.append(txMsg);
     } else {
@@ -586,13 +598,13 @@ bool CandleApiInterface::readMessage(QList<BusMessage> &msglist, unsigned int ti
         msg.setByte(i, data[i]);
     }
 
-    uint32_t dev_ts = candle_fd_frame_timestamp_us(&frame) - _deviceTicksStart;
-    uint64_t ts_us = _hostOffsetStart + dev_ts;
-
-    uint64_t us_since_start = _backend.getUsecsSinceMeasurementStart();
-    if (us_since_start > 0x180000000) {
-        ts_us += us_since_start & 0xFFFFFFFF00000000;
+    uint32_t raw_ts = candle_fd_frame_timestamp_us(&frame);
+    if (raw_ts < _prevDeviceTs) {
+        _deviceTsHigh += (1ULL << 32);
     }
+    _prevDeviceTs = raw_ts;
+    uint32_t dev_ts = raw_ts - _deviceTicksStart;
+    uint64_t ts_us = _hostOffsetStart + _deviceTsHigh + dev_ts;
 
     msg.setTimestamp_us(static_cast<int64_t>(ts_us));
     msglist.append(msg);

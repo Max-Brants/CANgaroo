@@ -299,7 +299,9 @@ QVariant AggregatedTraceViewModel::data_TextColorRole(const QModelIndex &index, 
         ? item->_lastmsg
         : item->parent()->_lastmsg;
 
-    // Fade stale messages via alpha based on time since last reception
+    // Fade stale messages via alpha based on time since last reception.
+    // Precondition: message timestamps must be Unix-epoch microseconds so that
+    // getTimestamp_ms() is directly comparable to currentMSecsSinceEpoch().
     qint64 now_ms = _fadeNowMs > 0 ? _fadeNowMs : QDateTime::currentMSecsSinceEpoch();
     double diff_sec = (now_ms - msg.getTimestamp_ms()) / 1000.0;
 

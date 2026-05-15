@@ -10,6 +10,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -61,8 +62,10 @@ private:
 
     uint64_t _hostOffsetStart;
     uint32_t _deviceTicksStart;
+    uint32_t _prevDeviceTs;
+    uint64_t _deviceTsHigh;
     uint8_t _channel;
-    bool _isOpen;
+    std::atomic<bool> _isOpen;
     bool _isFdEnabled;
 
     std::shared_ptr<CandleSharedDevice> _sharedDev;

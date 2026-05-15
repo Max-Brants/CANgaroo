@@ -92,7 +92,7 @@ void BusTrace::enqueueMessage(const BusMessage &msg, bool more_to_follow)
 {
     QMutexLocker locker(&_mutex);
 
-    int idx = size() + _newRows;
+    int idx = _dataRowsUsed + _newRows;
     if (idx>=_data.size()) {
         _data.resize(_data.size() + pool_chunk_size);
     }

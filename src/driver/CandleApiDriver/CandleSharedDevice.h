@@ -59,6 +59,11 @@ struct CandleSharedDevice
     QWaitCondition queueCond;
     QList<candle_fd_frame_t> rxQueues[MAX_CHANNELS];
 
+    // Shared timestamp epoch captured once at device open time so that all
+    // channels on the same physical device use an identical baseline.
+    uint64_t hostOffsetStart{0};
+    uint32_t deviceTicksStart{0};
+
     // Background reader thread: calls candle_fd_frame_read() in a loop and
     // routes each received frame to the appropriate channel queue.
     std::thread readerThread;

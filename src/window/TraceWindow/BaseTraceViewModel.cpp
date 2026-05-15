@@ -161,7 +161,7 @@ QVariant BaseTraceViewModel::formatTimestamp(timestamp_mode_t mode, const BusMes
         if (t_last==0) {
             return QString::number(0.0, 'f', 3);
         } else {
-            return QString::number(t_current - t_last, 'f', 3);
+            return QString::number(qMax(0.0, t_current - t_last), 'f', 3);
         }
 
     } else if (mode==timestamp_mode_absolute) {
