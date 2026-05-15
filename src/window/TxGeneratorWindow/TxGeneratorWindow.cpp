@@ -42,6 +42,12 @@ TxGeneratorWindow::TxGeneratorWindow(QWidget *parent, Backend &backend) :
 {
     ui->setupUi(this);
 
+    // Allow tree widgets to be compressed to near-zero so the window can be
+    // made as short as the user wants (otherwise QTreeWidget's inherent
+    // minimumSizeHint blocks shrinkage even after the window minimum is relaxed).
+    ui->treeAvailable->setMinimumHeight(0);
+    ui->treeActive->setMinimumHeight(0);
+
     _sendTimer = new QTimer(this);
     _sendTimer->setInterval(4); // Check every 4ms
     connect(_sendTimer, &QTimer::timeout, this, &TxGeneratorWindow::onSendTimerTimeout);
@@ -827,7 +833,7 @@ void TxGeneratorWindow::stopAll()
 
 QSize TxGeneratorWindow::sizeHint() const
 {
-    return QSize(1200, 600);
+    return QSize(1200, 400);
 }
 
 void TxGeneratorWindow::updateSendTimer()
