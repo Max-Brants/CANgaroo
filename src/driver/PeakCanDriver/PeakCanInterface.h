@@ -71,6 +71,7 @@ private:
     bool        _isOpen;
     QString     _name;
     unsigned    _bitrate;
+    uint64_t    _channelOpenTime_us{0};
 
     struct {
         uint64_t rx_count;

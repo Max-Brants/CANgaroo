@@ -159,6 +159,13 @@ void KvaserInterface::open()
         return;
     }
 
+    // Record wall-clock time at channel open so that device-relative Kvaser
+    // timestamps (which start at 0 when the channel is opened) can be
+    // converted to Unix-epoch µs, consistent with TX echo timestamps.
+    _channelOpenTime_us = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+
     _isOpen = true;
     log_info(QString("KvaserInterface %1: opened").arg(_name));
 }
@@ -266,9 +273,15 @@ bool KvaserInterface::readMessage(QList<BusMessage> &msglist, unsigned int timeo
     msg.setErrorFrame((flags & canMSG_ERROR_FRAME) != 0);
     msg.setInterfaceId(getId());
 
-    long ts_sec, ts_usec;
-    kvaserTimestampToSecUsec(timestamp, ts_sec, ts_usec);
-    msg.setTimestamp(ts_sec, ts_usec);
+    // Kvaser timestamp is relative to channel open (starts at 0).
+    // Add the wall-clock baseline captured at open() to produce Unix-epoch µs,
+    // consistent with TX echo timestamps produced by sendMessage().
+    long dev_sec, dev_usec;
+    kvaserTimestampToSecUsec(timestamp, dev_sec, dev_usec);
+    uint64_t total_us = _channelOpenTime_us
+                        + static_cast<uint64_t>(dev_sec) * 1000000ULL
+                        + static_cast<uint64_t>(dev_usec);
+    msg.setTimestamp(total_us / 1000000ULL, total_us % 1000000ULL);
 
     uint8_t len = (dlc > 8) ? 8 : dlc;
     msg.setLength(len);

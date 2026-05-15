@@ -142,6 +142,12 @@ void PeakCanInterface::open()
     }
     _rxEvent = hEvent;
 
+    // Record the wall-clock time at channel open so that device-relative
+    // PCAN timestamps (which start at 0) can be converted to Unix epoch µs.
+    _channelOpenTime_us = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count());
+
     _isOpen = true;
     log_info(QString("PeakCanInterface %1: opened").arg(_name));
 }
@@ -253,10 +259,12 @@ bool PeakCanInterface::readMessage(QList<BusMessage> &msglist, unsigned int time
     msg.setErrorFrame((frame.MSGTYPE & PCAN_MESSAGE_STATUS) != 0);
     msg.setInterfaceId(getId());
 
-    // PCAN timestamp: millis_overflow * 2^32 + millis gives total milliseconds;
-    // micros is the sub-millisecond part (0–999 µs).
-    uint64_t total_us = ((uint64_t)ts.millis_overflow * 0x100000000ULL + ts.millis) * 1000ULL
-                        + ts.micros;
+    // PCAN timestamp is relative to channel open (starts at 0).
+    // Add the wall-clock baseline captured at open() to produce Unix-epoch µs,
+    // consistent with the TX echo timestamps produced by sendMessage().
+    uint64_t device_us = ((uint64_t)ts.millis_overflow * 0x100000000ULL + ts.millis) * 1000ULL
+                         + ts.micros;
+    uint64_t total_us = _channelOpenTime_us + device_us;
     msg.setTimestamp(total_us / 1000000ULL, total_us % 1000000ULL);
 
     uint8_t len = (frame.LEN > 8) ? 8 : frame.LEN;
