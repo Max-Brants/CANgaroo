@@ -30,14 +30,6 @@ static bool candle_dev_interal_open(candle_handle hdev);
 
 candle_log_fn_t candle_log_fn = NULL;
 
-#define CANDLE_DBG(fmt, ...) do { \
-    if (candle_log_fn) { \
-        wchar_t _dbg[768]; \
-        _snwprintf(_dbg, 768, L"[candle] " fmt, ##__VA_ARGS__); \
-        candle_log_fn(_dbg); \
-    } \
-} while(0)
-
 static bool candle_read_di(HDEVINFO hdi, SP_DEVICE_INTERFACE_DATA interfaceData, candle_device_t *dev)
 {
     /* get required length first (this call always fails with an error) */
@@ -148,20 +140,14 @@ static int candle_scan_vidpid(candle_list_t *l, uint16_t vid, uint16_t pid, unsi
     wchar_t hwid_prefix[32];
     _snwprintf(hwid_prefix, 32, L"USB\\VID_%04X&PID_%04X", vid, pid);
 
-    CANDLE_DBG(L"start: looking for VID_%04X&PID_%04X, existing=%u",
-               vid, pid, existing);
-
     /* Enumerate USB device instances (not interfaces) so we can read hardware IDs. */
     HDEVINFO hdi = SetupDiGetClassDevs(NULL, L"USB", NULL,
                                        DIGCF_ALLCLASSES | DIGCF_PRESENT);
     if (hdi == INVALID_HANDLE_VALUE) {
-        CANDLE_DBG(L"SetupDiGetClassDevs failed (err=%lu) -- no USB devices enumerable",
-                   GetLastError());
         return 0;
     }
 
     int added = 0;
-    DWORD dev_idx = 0;
     SP_DEVINFO_DATA devInfo;
     devInfo.cbSize = sizeof(SP_DEVINFO_DATA);
 
@@ -169,33 +155,24 @@ static int candle_scan_vidpid(candle_list_t *l, uint16_t vid, uint16_t pid, unsi
          SetupDiEnumDeviceInfo(hdi, i, &devInfo) && existing + added < CANDLE_MAX_DEVICES;
          i++)
     {
-        dev_idx = i;
 
         /* Hardware IDs are a REG_MULTI_SZ — check each string for our VID/PID prefix. */
         wchar_t hwids[512];
         memset(hwids, 0, sizeof(hwids));
         if (!SetupDiGetDeviceRegistryPropertyW(hdi, &devInfo, SPDRP_HARDWAREID,
                 NULL, (PBYTE)hwids, sizeof(hwids) - sizeof(wchar_t), NULL)) {
-            CANDLE_DBG(L"  [%lu] GetDeviceRegistryProperty failed (err=%lu), skipping",
-                       i, GetLastError());
             continue;
         }
-
-        /* Log all hardware IDs for this device entry. */
-        for (const wchar_t *dbg_p = hwids; *dbg_p; dbg_p += wcslen(dbg_p) + 1)
-            CANDLE_DBG(L"  [%lu] hardware ID: %ls", i, dbg_p);
 
         bool matches = false;
         const wchar_t *p;
         for (p = hwids; *p; p += wcslen(p) + 1) {
             if (_wcsnicmp(p, hwid_prefix, wcslen(hwid_prefix)) == 0) {
                 matches = true;
-                CANDLE_DBG(L"  [%lu] MATCH on hardware ID: %ls", i, p);
                 break;
             }
         }
         if (!matches) {
-            CANDLE_DBG(L"  [%lu] no VID/PID match, skipping", i);
             continue;
         }
 
@@ -204,8 +181,6 @@ static int candle_scan_vidpid(candle_list_t *l, uint16_t vid, uint16_t pid, unsi
         HKEY hKey = SetupDiOpenDevRegKey(hdi, &devInfo, DICS_FLAG_GLOBAL, 0,
                                          DIREG_DEV, KEY_READ);
         if (hKey == INVALID_HANDLE_VALUE) {
-            CANDLE_DBG(L"  [%lu] OpenDevRegKey failed (err=%lu) -- no registry key, skipping",
-                       i, GetLastError());
             continue;
         }
 
@@ -217,30 +192,16 @@ static int candle_scan_vidpid(candle_list_t *l, uint16_t vid, uint16_t pid, unsi
          * DeviceInterfaceGUID (REG_SZ, older/zadig-generated INFs). */
         LONG reg_rc = RegQueryValueExW(hKey, L"DeviceInterfaceGUIDs", NULL, NULL,
                                        (LPBYTE)guid_buf, &buf_len);
-        if (reg_rc == ERROR_SUCCESS) {
-            CANDLE_DBG(L"  [%lu] read DeviceInterfaceGUIDs (multi-sz) from registry", i);
-        } else {
-            CANDLE_DBG(L"  [%lu] DeviceInterfaceGUIDs not found (err=%ld), trying DeviceInterfaceGUID",
-                       i, reg_rc);
+        if (reg_rc != ERROR_SUCCESS) {
             buf_len = sizeof(guid_buf) - sizeof(wchar_t);
-            reg_rc = RegQueryValueExW(hKey, L"DeviceInterfaceGUID", NULL, NULL,
-                                      (LPBYTE)guid_buf, &buf_len);
-            if (reg_rc == ERROR_SUCCESS) {
-                CANDLE_DBG(L"  [%lu] read DeviceInterfaceGUID (single) from registry", i);
-            } else {
-                CANDLE_DBG(L"  [%lu] DeviceInterfaceGUID also not found (err=%ld)", i, reg_rc);
-            }
+            RegQueryValueExW(hKey, L"DeviceInterfaceGUID", NULL, NULL,
+                             (LPBYTE)guid_buf, &buf_len);
         }
         RegCloseKey(hKey);
 
         if (!guid_buf[0]) {
-            CANDLE_DBG(L"  [%lu] no GUID found in registry, skipping", i);
             continue;
         }
-
-        /* Log all GUIDs about to be scanned. */
-        for (const wchar_t *dbg_g = guid_buf; *dbg_g; dbg_g += wcslen(dbg_g) + 1)
-            CANDLE_DBG(L"  [%lu] will scan GUID: %ls", i, dbg_g);
 
         /* Iterate GUID strings.  Both REG_SZ and REG_MULTI_SZ are covered by the
          * same NUL-terminated-string walk (REG_SZ just has one entry). */
@@ -250,39 +211,24 @@ static int candle_scan_vidpid(candle_list_t *l, uint16_t vid, uint16_t pid, unsi
              g += wcslen(g) + 1)
         {
             unsigned base = existing + added;
-            CANDLE_DBG(L"  [%lu] scanning GUID %ls (base=%u)", i, g, base);
             int n = candle_scan_guid(l, g, base);
-            if (n < 0) {
-                CANDLE_DBG(L"  [%lu] candle_scan_guid returned error for GUID %ls", i, g);
+            if (n <= 0) {
                 continue;
             }
-            if (n == 0) {
-                CANDLE_DBG(L"  [%lu] candle_scan_guid found 0 interfaces for GUID %ls", i, g);
-                continue;
-            }
-            CANDLE_DBG(L"  [%lu] candle_scan_guid found %d interface(s) for GUID %ls", i, n, g);
 
             /* Remove any entries whose path was already found by the GUID scan. */
             for (int ni = 0; ni < n; ) {
                 if (candle_path_exists(l, base, l->dev[base + ni].path)) {
-                    CANDLE_DBG(L"  [%lu]   path already in list (from GUID scan), removing: %ls",
-                               i, l->dev[base + ni].path);
                     memmove(&l->dev[base + ni], &l->dev[base + ni + 1],
                             (unsigned)(n - ni - 1) * sizeof(candle_device_t));
                     n--;
                 } else {
-                    CANDLE_DBG(L"  [%lu]   new path, keeping: %ls",
-                               i, l->dev[base + ni].path);
                     ni++;
                 }
             }
-            CANDLE_DBG(L"  [%lu] %d new device(s) added after dedup for GUID %ls", i, n, g);
             added += n;
         }
     }
-
-    CANDLE_DBG(L"done: added %d device(s) via VID/PID scan (total existing+added=%u)",
-               added, existing + added);
 
     SetupDiDestroyDeviceInfoList(hdi);
     return added;
@@ -398,8 +344,6 @@ static bool candle_dev_interal_open(candle_handle hdev)
 {
     candle_device_t *dev = (candle_device_t*)hdev;
 
-    CANDLE_DBG(L"open: %ls", dev->path);
-
     memset(dev->rxevents, 0, sizeof(dev->rxevents));
     memset(dev->rxurbs, 0, sizeof(dev->rxurbs));
 
@@ -414,25 +358,21 @@ static bool candle_dev_interal_open(candle_handle hdev)
     );
 
     if (dev->deviceHandle == INVALID_HANDLE_VALUE) {
-        CANDLE_DBG(L"open: CreateFile failed (err=%lu) path=%ls", GetLastError(), dev->path);
         dev->last_error = CANDLE_ERR_CREATE_FILE;
         return false;
     }
 
     if (!WinUsb_Initialize(dev->deviceHandle, &dev->winUSBHandle)) {
-        CANDLE_DBG(L"open: WinUsb_Initialize failed (err=%lu) path=%ls", GetLastError(), dev->path);
         dev->last_error = CANDLE_ERR_WINUSB_INITIALIZE;
         goto close_handle;
     }
 
     USB_INTERFACE_DESCRIPTOR ifaceDescriptor;
     if (!WinUsb_QueryInterfaceSettings(dev->winUSBHandle, 0, &ifaceDescriptor)) {
-        CANDLE_DBG(L"open: QueryInterfaceSettings failed (err=%lu)", GetLastError());
         dev->last_error = CANDLE_ERR_QUERY_INTERFACE;
         goto winusb_free;
     }
 
-    CANDLE_DBG(L"open: interface %u has %u endpoints", ifaceDescriptor.bInterfaceNumber, ifaceDescriptor.bNumEndpoints);
     dev->interfaceNumber = ifaceDescriptor.bInterfaceNumber;
     bool has_in = false, has_out = false;
 
@@ -440,36 +380,25 @@ static bool candle_dev_interal_open(candle_handle hdev)
 
         WINUSB_PIPE_INFORMATION pipeInfo;
         if (!WinUsb_QueryPipe(dev->winUSBHandle, 0, i, &pipeInfo)) {
-            CANDLE_DBG(L"open: QueryPipe[%u] failed (err=%lu)", i, GetLastError());
             dev->last_error = CANDLE_ERR_QUERY_PIPE;
             goto winusb_free;
         }
 
         if (pipeInfo.PipeType == UsbdPipeTypeBulk && USB_ENDPOINT_DIRECTION_IN(pipeInfo.PipeId)) {
             if (!has_in) {
-                CANDLE_DBG(L"open: endpoint[%u] = bulk IN (0x%02x)", i, pipeInfo.PipeId);
                 dev->bulkInPipe = pipeInfo.PipeId;
                 has_in = true;
-            } else {
-                CANDLE_DBG(L"open: endpoint[%u] = extra bulk IN (0x%02x), ignored", i, pipeInfo.PipeId);
             }
         } else if (pipeInfo.PipeType == UsbdPipeTypeBulk && USB_ENDPOINT_DIRECTION_OUT(pipeInfo.PipeId)) {
             if (!has_out) {
-                CANDLE_DBG(L"open: endpoint[%u] = bulk OUT (0x%02x)", i, pipeInfo.PipeId);
                 dev->bulkOutPipe = pipeInfo.PipeId;
                 has_out = true;
-            } else {
-                CANDLE_DBG(L"open: endpoint[%u] = extra bulk OUT (0x%02x), ignored", i, pipeInfo.PipeId);
             }
-        } else {
-            CANDLE_DBG(L"open: endpoint[%u] type=%u id=0x%02x (not bulk, skipped)", i, pipeInfo.PipeType, pipeInfo.PipeId);
         }
 
     }
 
     if (!has_in || !has_out) {
-        CANDLE_DBG(L"open: missing required bulk pipe (has_in=%d has_out=%d) -- PARSE_IF_DESCR error",
-                   (int)has_in, (int)has_out);
         dev->last_error = CANDLE_ERR_PARSE_IF_DESCR;
         goto winusb_free;
     }
@@ -508,13 +437,10 @@ static bool candle_dev_interal_open(candle_handle hdev)
      * per-frame CreateEvent overhead at high CAN frame rates. */
     dev->txEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     if (!dev->txEvent) {
-        CANDLE_DBG(L"open: CreateEvent(txEvent) failed (err=%lu)", GetLastError());
         dev->last_error = CANDLE_ERR_MALLOC;
         goto winusb_free;
     }
 
-    CANDLE_DBG(L"open: success, icount=%u (channels=%u) path=%ls",
-               dev->dconf.icount, dev->dconf.icount + 1, dev->path);
     dev->last_error = CANDLE_ERR_OK;
     return true;
 

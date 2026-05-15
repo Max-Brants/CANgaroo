@@ -24,7 +24,6 @@
 
 #include "CandleApiInterface.h"
 #include "driver/GenericCanSetupPage.h"
-#include "core/Log.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -76,10 +75,6 @@ CandleApiDriver::CandleApiDriver(Backend &backend)
     setupPage(new GenericCanSetupPage(0))
 {
     QObject::connect(&backend, &Backend::onSetupDialogCreated, setupPage, &GenericCanSetupPage::onSetupDialogCreated);
-
-    candle_log_fn = [](const wchar_t *msg) {
-        log_debug(QString::fromWCharArray(msg));
-    };
 }
 
 QString CandleApiDriver::getName() const
@@ -109,23 +104,17 @@ bool CandleApiDriver::update()
     for (uint8_t i = 0; i < num_devices; i++) {
         candle_handle dev;
         if (!candle_dev_get(clist, i, &dev)) {
-            log_debug(QString("CandleAPI: candle_dev_get failed for index %1").arg(i));
             continue;
         }
 
-        const QString devPathStr = QString::fromWCharArray(candle_dev_get_path(dev));
-        log_debug(QString("CandleAPI: found device[%1]: %2").arg(i).arg(devPathStr));
-
         // Open temporarily to read channel count and per-channel capabilities.
         if (!candle_dev_open(dev)) {
-            log_debug(QString("CandleAPI: candle_dev_open failed for %1 (err=%2)").arg(devPathStr).arg(candle_dev_last_error(dev)));
             candle_dev_free(dev);
             continue;
         }
 
         uint8_t num_channels = 0;
         if (!candle_channel_count(dev, &num_channels) || num_channels == 0) {
-            log_debug(QString("CandleAPI: channel_count=0 for %1, skipping").arg(devPathStr));
             candle_dev_close(dev);
             candle_dev_free(dev);
             continue;
@@ -139,7 +128,6 @@ bool CandleApiDriver::update()
         // (MI_00, MI_02, …) but they all share the same USB endpoint and
         // the firmware reports the total icount from any interface.
         if (_devices.count(baseKey)) {
-            log_debug(QString("CandleAPI: duplicate interface skipped: %1").arg(devPathStr));
             candle_dev_close(dev);
             candle_dev_free(dev);
             continue;
@@ -166,8 +154,6 @@ bool CandleApiDriver::update()
         auto sharedDev = std::make_shared<CandleSharedDevice>();
         sharedDev->handle = shared_handle;
         _devices[baseKey] = sharedDev;
-
-        log_debug(QString("CandleAPI: registered device %1 with %2 channel(s)").arg(devPathStr).arg(num_channels));
 
         // One BusInterface per channel, all sharing the same physical device.
         for (uint8_t ch = 0; ch < num_channels; ch++) {
