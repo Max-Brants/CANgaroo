@@ -15,6 +15,7 @@
 #include "core/BusMessage.h"
 #include <QSerialPort>
 #include <QThread>
+#include <QVector>
 
 
 enum CANIL_CAN_State
@@ -161,7 +162,8 @@ public:
 
     void LinAddFrame(uint8_t ch, const BusMessage &msg, uint8_t frame_time);
 
-    uint8_t CanGetState(uint8_t ch) const;
+    uint8_t  CanGetState(uint8_t ch) const;
+    uint16_t CanGetRxDropCount(uint8_t ch) const;
 
     uint8_t LinGetState(uint8_t ch) const;
 
@@ -203,6 +205,12 @@ public:
      * @param msg  Frame to transmit.
      * @return true if the frame was handed to the GrIP layer successfully.
      */
+    /** @return Last received GPIO pin state bitmask (bit N = state of pin N). */
+    uint16_t GpioGetPinState() const;
+
+    /** @return Last received 12-bit ADC value for @p pin (0–4095). */
+    uint16_t GpioGetAnalogValue(uint8_t pin) const;
+
     bool CanTransmit(uint8_t ch, const BusMessage &msg);
 
     bool LinSendData(uint8_t ch, const BusMessage &msg);
@@ -225,6 +233,14 @@ public:
      * @param len         Payload length in bytes.
      */
     void Send(GrIP_ProtocolType_e ProtType, GrIP_MessageType_e MsgType, GrIP_ReturnType_e ReturnCode, const uint8_t *data, uint16_t len);
+
+signals:
+    /**
+     * @brief Emitted when a DATA_REPORT_GPIO packet is received.
+     * @param pinState     Bitmask of digital pin states (bit N = pin N level).
+     * @param analogValues 12-bit ADC readings, one per pin (index matches bit position).
+     */
+    void gpioUpdated(uint16_t pinState, QVector<uint16_t> analogValues);
 
 private:
     /**
@@ -283,7 +299,8 @@ private:
     mutable std::mutex m_MutexData;                       ///< Guards m_ReceiveQueue, m_LinReceiveQueue, m_TxPending, m_Version, and channel counts.
     std::vector<std::queue<BusMessage>> m_ReceiveQueue;    ///< Per CAN-channel inbound frame queues, populated by ProcessData().
     std::vector<std::queue<BusMessage>> m_LinReceiveQueue; ///< Per LIN-channel inbound frame queues, populated by ProcessData().
-    std::unordered_map<uint32_t, std::pair<uint8_t, BusMessage>> m_TxPending; ///< Frames awaiting TX echo, keyed by correlation token; value is {channel, msg}.
+    struct TxPendingEntry { uint8_t ch; BusMessage msg; bool errorReported = false; };
+    std::unordered_map<uint32_t, TxPendingEntry> m_TxPending; ///< Frames awaiting TX echo, keyed by correlation token.
 
     // --- Device state ---
     std::string m_Version;                ///< Firmware version string, set on SYSTEM_REPORT_INFO reply.
@@ -293,8 +310,12 @@ private:
     std::vector<bool> m_Channel_StatusCAN; ///< Per-channel enabled state, indexed identically to m_ReceiveQueue.
     std::vector<bool> m_Channel_StatusLIN;
 
-    std::vector<uint8_t> m_CanBusStatus;
-    std::vector<uint8_t> m_LinBusStatus;
+    std::vector<uint8_t>  m_CanBusStatus;
+    std::vector<uint16_t> m_CanRxDropCount;
+    std::vector<uint8_t>  m_LinBusStatus;
+
+    uint16_t m_GPIO_PinState = 0;         ///< Last received GPIO pin state bitmask.
+    uint16_t m_GPIO_AnalogValues[8] = {}; ///< Last received ADC readings per pin.
 };
 
 

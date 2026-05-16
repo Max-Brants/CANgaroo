@@ -441,6 +441,8 @@ void CandleApiInterface::open()
     _numTx = 0;
     _numTxErr = 0;
 
+    candle_channel_start(_sharedDev->handle, _channel, flags);
+
     if (firstOpen) {
         uint32_t t_dev = 0;
         if (candle_dev_get_timestamp_us(_sharedDev->handle, &t_dev)) {
@@ -450,8 +452,6 @@ void CandleApiInterface::open()
             _sharedDev->deviceTicksStart = t_dev;
         }
     }
-
-    candle_channel_start(_sharedDev->handle, _channel, flags);
 
     // All channels on the same device share the identical epoch baseline so
     // that inter-channel timestamps are directly comparable.
@@ -617,9 +617,10 @@ bool CandleApiInterface::readMessage(QList<BusMessage> &msglist, unsigned int ti
     _prevDeviceTs = raw_ts;
     const uint64_t high = _deviceTsHigh.load(std::memory_order_relaxed);
     const uint64_t abs_ts = static_cast<uint64_t>(raw_ts) + high;
-    // Clamp pre-epoch frames to measurement start rather than wrapping negative.
-    const uint64_t ts_us = _hostOffsetStart +
-                           (abs_ts >= _deviceTicksStart ? abs_ts - _deviceTicksStart : 0ULL);
+    if (abs_ts < _deviceTicksStart) {
+        return hasTx;
+    }
+    const uint64_t ts_us = _hostOffsetStart + (abs_ts - _deviceTicksStart);
 
     msg.setTimestamp_us(static_cast<int64_t>(ts_us));
     msglist.append(msg);

@@ -58,9 +58,6 @@ struct GrIPContext
     // In-progress receive packet
     GrIP_Packet_t rxPacket = {};
 
-    // Transmit scratch buffer (not shared across threads)
-    uint8_t txBuf[TX_BUF_SIZE] = {};
-
     // Error counters
     GrIP_ErrorFlags_t errors = {};
 
@@ -234,7 +231,7 @@ void GrIP_Init()
     // Clear packet and error state
     ctx.rxPacket = {};
     ctx.errors   = {};
-    std::memset(ctx.txBuf, 0, sizeof(ctx.txBuf));
+    ctx.txStream.clear();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,18 +280,19 @@ uint8_t GrIP_Transmit(GrIP_ProtocolType_e prot,
 
     hdr.CRC_Header = CRC_CalculateCRC8(reinterpret_cast<const uint8_t *>(&hdr), GRIP_HEADER_SIZE - 2u);
 
-    // Build wire frame
-    unsigned int idx = encodeHeader(hdr, ctx.txBuf, 0u);
+    // Build wire frame into a stack-local buffer — safe to call from multiple threads simultaneously
+    uint8_t localTxBuf[TX_BUF_SIZE] = {};
+    unsigned int idx = encodeHeader(hdr, localTxBuf, 0u);
 
     if (pdu && pdu->Length > 0u)
-        idx = encodePayload(pdu->Data, pdu->Length, ctx.txBuf, idx);
+        idx = encodePayload(pdu->Data, pdu->Length, localTxBuf, idx);
 
-    ctx.txBuf[idx++] = GRIP_EOT;
+    localTxBuf[idx++] = GRIP_EOT;
 
     // Push to TX stream (thread-safe)
     {
         QMutexLocker lk(&ctx.streamMtx);
-        streamWrite(ctx.txBuf, static_cast<qint64>(idx));
+        streamWrite(localTxBuf, static_cast<qint64>(idx));
     }
 
     return RET_OK;

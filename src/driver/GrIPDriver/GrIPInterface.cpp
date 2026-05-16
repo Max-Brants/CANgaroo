@@ -145,6 +145,7 @@ bool GrIPInterface::updateStatus()
     if (_manufacturer == CANIL_CAN)
     {
         _status.can_state.store(m_GrIPHandler->CanGetState(_channel_idx));
+        _status.rx_overruns.store(m_GrIPHandler->CanGetRxDropCount(_channel_idx));
     }
     else if (_manufacturer == CANIL_LIN)
     {

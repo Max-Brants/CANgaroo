@@ -78,7 +78,8 @@ typedef struct __attribute__((packed))
 {
     Protocol_SystemHeader_t Header;
 
-    uint8_t BusState[8];
+    uint8_t  BusState[8];
+    uint16_t RxDropCount[8];
 } Protocol_BusStatus_t;
 
 // Payload for SYSTEM_CAN_MODE — sets listen-only or normal mode.
@@ -167,6 +168,16 @@ typedef struct __attribute__((packed))
     uint8_t ID;
     uint8_t Data[8];
 } Protocol_LinData_t;
+
+// Payload for incoming DATA_REPORT_GPIO (252).
+typedef struct __attribute__((packed))
+{
+    Protocol_SystemHeader_t Header;
+    uint16_t PinState;       // Bitmask: bit N = digital state of pin N
+    uint16_t AnalogValue[8]; // Measured voltage per pin in mV
+} Protocol_GPIO_t;
+
+#define DATA_REPORT_GPIO        252u
 
 
 // ---------------------------------------------------------------------------
@@ -371,6 +382,11 @@ void GrIPHandler::CanEnableChannel(uint8_t ch, bool enable)
 
         std::unique_lock<std::mutex> lck(m_MutexSerial);
 
+        if (!enable)
+        {
+            m_SerialPort->clear(QSerialPort::Output); // Flush TX queues for this channel when disabling it
+        }
+
         std::ignore = GrIP_Transmit(PROT_GrIP, MSG_SYSTEM_CMD, RET_OK, &p);
     }
 }
@@ -565,6 +581,16 @@ uint8_t GrIPHandler::CanGetState(uint8_t ch) const
     return 0;
 }
 
+uint16_t GrIPHandler::CanGetRxDropCount(uint8_t ch) const
+{
+    std::unique_lock<std::mutex> lck(m_MutexData);
+    if (ch < m_CanRxDropCount.size())
+    {
+        return m_CanRxDropCount[ch];
+    }
+    return 0;
+}
+
 uint8_t GrIPHandler::LinGetState(uint8_t ch) const
 {
     std::unique_lock<std::mutex> lck(m_MutexData);
@@ -576,6 +602,20 @@ uint8_t GrIPHandler::LinGetState(uint8_t ch) const
     {
         qWarning() << "GrIPHandler::LinGetState: channel index" << ch << "out of range (size:" << m_CanBusStatus.size() << ")";
     }
+    return 0;
+}
+
+uint16_t GrIPHandler::GpioGetPinState() const
+{
+    std::unique_lock<std::mutex> lck(m_MutexData);
+    return m_GPIO_PinState;
+}
+
+uint16_t GrIPHandler::GpioGetAnalogValue(uint8_t pin) const
+{
+    std::unique_lock<std::mutex> lck(m_MutexData);
+    if (pin < 8)
+        return m_GPIO_AnalogValues[pin];
     return 0;
 }
 
@@ -632,7 +672,8 @@ bool GrIPHandler::CanTransmit(uint8_t ch, const BusMessage &msg)
     frame.Header.Length = sizeof(Protocol_CanFrame_t) - sizeof(Protocol_SystemHeader_t) - 64 + msg.getLength();
     frame.Header.Data = 0;
 
-    GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&frame), sizeof(Protocol_CanFrame_t)};
+    const uint16_t pduLen = static_cast<uint16_t>(sizeof(Protocol_CanFrame_t) - 64u + msg.getLength());
+    GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&frame), pduLen};
 
     frame.Channel = ch;
     frame.ID = msg.getId();
@@ -684,7 +725,7 @@ bool GrIPHandler::CanTransmit(uint8_t ch, const BusMessage &msg)
         std::unique_lock<std::mutex> dataLck(m_MutexData);
         BusMessage pendingMsg = msg;
         pendingMsg.setTimestamp_ms(QDateTime::currentMSecsSinceEpoch());
-        m_TxPending.insert_or_assign(hash, std::pair<uint8_t, BusMessage>{ch, pendingMsg});
+        m_TxPending.insert_or_assign(hash, TxPendingEntry{ch, pendingMsg});
     }
 
     std::unique_lock<std::mutex> lck(m_MutexSerial);
@@ -742,6 +783,8 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
             // CAN-FD channels follow classic CAN channels in the same vectors.
             m_Channel_StatusCAN.clear();
             m_ReceiveQueue.clear();
+            m_CanBusStatus.clear();
+            m_CanRxDropCount.clear();
             m_Channel_StatusLIN.clear();
 
             for (int i = 0; i < info.ChannelsCAN + info.ChannelsCANFD; i++)
@@ -749,6 +792,7 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
                 m_Channel_StatusCAN.push_back(false);
                 m_ReceiveQueue.push_back({});
                 m_CanBusStatus.push_back(CANIL_CAN_State::CAN_Off);
+                m_CanRxDropCount.push_back(0);
             }
             m_LinReceiveQueue.clear();
             for (int i = 0; i < info.ChannelsLIN; i++)
@@ -865,11 +909,15 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
         case 220u:  // CAN Status Frame
         {
             Protocol_BusStatus_t frame;
-            std::memcpy(&frame, packet.Data, sizeof(Protocol_BusStatus_t));
+            std::memcpy(&frame, packet.Data, std::min(sizeof(Protocol_BusStatus_t), (size_t)packet.RX_Header.Length + sizeof(Protocol_SystemHeader_t)));
 
             for (size_t i = 0; i < m_CanBusStatus.size(); i++)
             {
                 m_CanBusStatus[i] = frame.BusState[i];
+            }
+            for (size_t i = 0; i < m_CanRxDropCount.size(); i++)
+            {
+                m_CanRxDropCount[i] = frame.RxDropCount[i];
             }
             //qDebug() << "CAN Status: " << frame.BusState[0] << " - " << frame.BusState[1];
             break;
@@ -896,21 +944,40 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
             auto it = m_TxPending.find(frame.Hash);
             if (it != m_TxPending.end())
             {
-                auto &[ch, msg] = it->second;
+                auto &entry = it->second;
 
-                msg.setRX(false);
-                if(frame.Header.Data != 0)
+                const qint64 age = QDateTime::currentMSecsSinceEpoch() - entry.msg.getTimestamp_ms();
+                if (entry.errorReported)
                 {
-                    msg.setErrorFrame(true);
-                    msg.setFlags(frame.Header.Data);
+                    qDebug() << "Late TX echo received (hash=" << frame.Hash << ", age=" << age << "ms)";
                 }
 
-                if (ch < m_ReceiveQueue.size())
+                entry.msg.setRX(false);
+                if (frame.Header.Data != 0)
                 {
-                    m_ReceiveQueue[ch].push(msg);
+                    entry.msg.setErrorFrame(true);
+                    entry.msg.setFlags(frame.Header.Data);
+                }
+
+                if (entry.ch < m_ReceiveQueue.size())
+                {
+                    m_ReceiveQueue[entry.ch].push(entry.msg);
                 }
                 m_TxPending.erase(it);
             }
+            break;
+        }
+
+        case DATA_REPORT_GPIO:
+        {
+            Protocol_GPIO_t frame;
+            std::memcpy(&frame, packet.Data, sizeof(Protocol_GPIO_t));
+
+            m_GPIO_PinState = frame.PinState;
+            std::memcpy(m_GPIO_AnalogValues, frame.AnalogValue, sizeof(m_GPIO_AnalogValues));
+
+            lck.unlock();
+            emit gpioUpdated(m_GPIO_PinState, QVector<uint16_t>(m_GPIO_AnalogValues, m_GPIO_AnalogValues + 8));
             break;
         }
 
@@ -949,7 +1016,7 @@ void GrIPHandler::WorkerThread()
     // QSerialPort must be created on the thread that uses it.
     m_SerialPort = new QSerialPort();
     m_SerialPort->setPortName(m_PortName);
-    m_SerialPort->setBaudRate(1000000);
+    m_SerialPort->setBaudRate(2000000);
     m_SerialPort->setDataBits(QSerialPort::Data8);
     m_SerialPort->setParity(QSerialPort::NoParity);
     m_SerialPort->setStopBits(QSerialPort::OneStop);
@@ -1065,19 +1132,27 @@ void GrIPHandler::PurgeStaleTxPending(qint64 timeout_ms)
 
     for (auto it = m_TxPending.begin(); it != m_TxPending.end(); )
     {
-        auto &[ch, msg] = it->second;
-        if (now - msg.getTimestamp_ms() >= timeout_ms)
+        auto &[hash, entry] = *it;
+        const qint64 age = now - entry.msg.getTimestamp_ms();
+
+        if (age >= 5000)
         {
-            msg.setRX(false);
-            msg.setErrorFrame(true);
-            if (ch < m_ReceiveQueue.size())
-            {
-                m_ReceiveQueue[ch].push(msg);
-            }
+            qDebug() << "TxPending abandoned — no echo after 5s (hash=" << hash << ")";
             it = m_TxPending.erase(it);
         }
         else
         {
+            if (age >= timeout_ms && !entry.errorReported)
+            {
+                entry.msg.setRX(false);
+                entry.msg.setErrorFrame(true);
+                if (entry.ch < m_ReceiveQueue.size())
+                {
+                    m_ReceiveQueue[entry.ch].push(entry.msg);
+                }
+                entry.errorReported = true;
+                qDebug() << "TxPending timeout — marked as error, waiting for late echo (hash=" << hash << ", age=" << age << "ms)";
+            }
             ++it;
         }
     }

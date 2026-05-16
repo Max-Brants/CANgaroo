@@ -198,7 +198,7 @@ void UnifiedTraceViewModel::processNewMessages()
                     m_j1939AggregatedMap[getJ1939Key(pmsg)] = item;
                 }
             }
-        } else if (status == DecodeStatus::Ignored) {
+        } else if (status == DecodeStatus::Ignored || status == DecodeStatus::Consumed) {
             if (m_category == Cat_All) {
                 auto item = std::make_shared<UnifiedTraceItem>(msg, m_rootItem.get());
                 uint64_t ts = static_cast<uint64_t>(msg.getFloatTimestamp() * 1000000.0);
