@@ -90,6 +90,15 @@ enum {
 };
 
 typedef enum {
+    CANDLE_STATE_ERROR_ACTIVE  = 0,
+    CANDLE_STATE_ERROR_WARNING = 1,
+    CANDLE_STATE_ERROR_PASSIVE = 2,
+    CANDLE_STATE_BUS_OFF       = 3,
+    CANDLE_STATE_STOPPED       = 4,
+    CANDLE_STATE_SLEEPING      = 5,
+} candle_can_state_t;
+
+typedef enum {
     CANDLE_MODE_NORMAL           = 0x0000,
     CANDLE_MODE_LISTEN_ONLY      = 0x0001,
     CANDLE_MODE_LOOP_BACK        = 0x0002,
@@ -217,6 +226,10 @@ static inline uint8_t candle_len_to_dlc(uint8_t len)
 typedef void (*candle_log_fn_t)(const wchar_t *msg);
 extern candle_log_fn_t candle_log_fn;
 
+/* Set to true to enable per-frame and per-control-transfer trace logs.
+ * Off by default; only error and setup messages are logged. */
+extern bool candle_log_verbose;
+
 bool __stdcall DLL candle_list_scan(candle_list_handle *list);
 bool __stdcall DLL candle_list_free(candle_list_handle list);
 bool __stdcall DLL candle_list_length(candle_list_handle list, uint8_t *len);
@@ -231,6 +244,7 @@ bool __stdcall DLL candle_dev_free(candle_handle hdev);
 
 bool __stdcall DLL candle_channel_count(candle_handle hdev, uint8_t *num_channels);
 bool __stdcall DLL candle_channel_get_capabilities(candle_handle hdev, uint8_t ch, candle_capability_t *cap);
+bool __stdcall DLL candle_channel_get_state(candle_handle hdev, uint8_t ch, candle_can_state_t *state);
 bool __stdcall DLL candle_channel_set_timing(candle_handle hdev, uint8_t ch, candle_bittiming_t *data);
 bool __stdcall DLL candle_channel_set_bitrate(candle_handle hdev, uint8_t ch, uint32_t bitrate);
 bool __stdcall DLL candle_channel_start(candle_handle hdev, uint8_t ch, uint32_t flags);

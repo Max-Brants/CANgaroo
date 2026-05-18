@@ -626,7 +626,22 @@ bool CandleApiInterface::updateStatistics()
 
 uint32_t CandleApiInterface::getState()
 {
-    return BusInterface::state_ok;
+    candle_capability_t caps;
+    if (!candle_channel_get_capabilities(_sharedDev->handle, _channel, &caps))
+        return BusInterface::state_ok;
+    if (!(caps.feature & CANDLE_FEATURE_GET_STATE))
+        return BusInterface::state_ok;
+
+    candle_can_state_t s;
+    if (!candle_channel_get_state(_sharedDev->handle, _channel, &s))
+        return BusInterface::state_ok;
+
+    switch (s) {
+        case CANDLE_STATE_ERROR_WARNING: return BusInterface::state_warning;
+        case CANDLE_STATE_ERROR_PASSIVE: return BusInterface::state_passive;
+        case CANDLE_STATE_BUS_OFF:       return BusInterface::state_bus_off;
+        default:                         return BusInterface::state_ok;
+    }
 }
 
 int CandleApiInterface::getNumRxFrames()

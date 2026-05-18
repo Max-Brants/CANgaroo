@@ -32,10 +32,28 @@
 static bool candle_dev_interal_open(candle_handle hdev);
 
 candle_log_fn_t candle_log_fn = NULL;
+bool candle_log_verbose = false;
 
 static void candle_logf(const wchar_t *fmt, ...)
 {
     if (candle_log_fn == NULL) {
+        return;
+    }
+
+    wchar_t buf[512];
+    va_list args;
+    va_start(args, fmt);
+    HRESULT hr = StringCchVPrintfW(buf, 512, fmt, args);
+    va_end(args);
+
+    if (SUCCEEDED(hr)) {
+        candle_log_fn(buf);
+    }
+}
+
+static void candle_logf_verbose(const wchar_t *fmt, ...)
+{
+    if (candle_log_fn == NULL || !candle_log_verbose) {
         return;
     }
 
@@ -679,6 +697,17 @@ bool __stdcall DLL candle_channel_get_capabilities(candle_handle hdev, uint8_t c
     return true;
 }
 
+bool __stdcall DLL candle_channel_get_state(candle_handle hdev, uint8_t ch, candle_can_state_t *state)
+{
+    candle_device_t *dev = (candle_device_t*)hdev;
+    candle_device_state_t ds;
+    if (!candle_ctrl_get_state(dev, ch, &ds)) {
+        return false;
+    }
+    *state = (candle_can_state_t)ds.state;
+    return true;
+}
+
 bool __stdcall DLL candle_channel_set_timing(candle_handle hdev, uint8_t ch, candle_bittiming_t *data)
 {
     // TODO ensure device is open, check channel count..
@@ -870,7 +899,7 @@ bool __stdcall DLL candle_frame_read(candle_handle hdev, candle_frame_t *frame, 
     memset(frame, 0, sizeof(*frame));
     DWORD copy_len = (bytes_transfered < sizeof(*frame)) ? bytes_transfered : sizeof(*frame);
     memcpy(frame, dev->rxurbs[urb_num].buf, copy_len);
-    candle_logf(L"classic read urb=%u bytes=%lu echo=0x%08x can_id=0x%08x dlc=%u ch=%u flags=0x%02x ts=%u",
+    candle_logf_verbose(L"classic read urb=%u bytes=%lu echo=0x%08x can_id=0x%08x dlc=%u ch=%u flags=0x%02x ts=%u",
                 urb_num,
                 bytes_transfered,
                 frame->echo_id,
@@ -1026,7 +1055,7 @@ bool __stdcall DLL candle_fd_frame_read(candle_handle hdev, candle_fd_frame_t *f
         memcpy(frame->data, classic.data, 8);
         frame->timestamp_us = (bytes_transfered >= sizeof(classic)) ? classic.timestamp_us : 0;
     }
-    candle_logf(L"fd read urb=%u bytes=%lu is_fd=%u echo=0x%08x can_id=0x%08x dlc=%u ch=%u flags=0x%02x ts=%u",
+    candle_logf_verbose(L"fd read urb=%u bytes=%lu is_fd=%u echo=0x%08x can_id=0x%08x dlc=%u ch=%u flags=0x%02x ts=%u",
                 urb_num,
                 bytes_transfered,
                 is_fd_frame ? 1 : 0,

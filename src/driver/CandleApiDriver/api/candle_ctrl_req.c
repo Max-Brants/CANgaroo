@@ -34,11 +34,13 @@ enum {
     CANDLE_TIMESTAMP_GET       = 6,
     /* 7: IDENTIFY, 8: GET_USER_ID, 9: SET_USER_ID (not used here) */
     CANDLE_BREQ_DATA_BITTIMING = 10,
+    /* 11: SET_TERMINATION, not used here */
+    CANDLE_BREQ_GET_STATE      = 12,
 };
 
 static void candle_ctrl_logf(const wchar_t *fmt, ...)
 {
-    if (candle_log_fn == NULL) {
+    if (candle_log_fn == NULL || !candle_log_verbose) {
         return;
     }
 
@@ -195,5 +197,21 @@ bool candle_ctrl_set_data_bittiming(candle_device_t *dev, uint8_t channel, candl
     );
 
     dev->last_error = rc ? CANDLE_ERR_OK : CANDLE_ERR_SET_BITTIMING;
+    return rc;
+}
+
+bool candle_ctrl_get_state(candle_device_t *dev, uint8_t channel, candle_device_state_t *data)
+{
+    bool rc = usb_control_msg(
+        dev->winUSBHandle,
+        CANDLE_BREQ_GET_STATE,
+        USB_DIR_IN|USB_TYPE_VENDOR|USB_RECIP_INTERFACE,
+        channel,
+        dev->interfaceNumber,
+        data,
+        sizeof(*data)
+    );
+
+    dev->last_error = rc ? CANDLE_ERR_OK : CANDLE_ERR_GET_DEVICE_INFO;
     return rc;
 }
