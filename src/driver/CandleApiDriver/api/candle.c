@@ -457,6 +457,18 @@ close_handle:
 
 static bool candle_prepare_read(candle_device_t *dev, unsigned urb_num)
 {
+    if (dev->rxurbs[urb_num].pending) {
+        dev->last_error = CANDLE_ERR_PREPARE_READ;
+        return false;
+    }
+
+    if (dev->rxurbs[urb_num].ovl.hEvent == NULL) {
+        dev->last_error = CANDLE_ERR_PREPARE_READ;
+        return false;
+    }
+
+    ResetEvent(dev->rxurbs[urb_num].ovl.hEvent);
+
     BOOL rc = WinUsb_ReadPipe(
         dev->winUSBHandle,
         dev->bulkInPipe,
@@ -470,29 +482,14 @@ static bool candle_prepare_read(candle_device_t *dev, unsigned urb_num)
         /* Synchronous completion: data is already in buf and the event is
          * signaled. WaitForMultipleObjects will return immediately on the
          * next call and GetOverlappedResult will succeed, so this is fine. */
+        dev->rxurbs[urb_num].pending = true;
         dev->last_error = CANDLE_ERR_OK;
         return true;
     }
 
-    if (GetLastError() == ERROR_IO_PENDING) {
-        dev->last_error = CANDLE_ERR_OK;
-        return true;
-    }
-
-    /* Pipe error — attempt abort/reset recovery before giving up. */
-    WinUsb_AbortPipe(dev->winUSBHandle, dev->bulkInPipe);
-    WinUsb_ResetPipe(dev->winUSBHandle, dev->bulkInPipe);
-
-    rc = WinUsb_ReadPipe(
-        dev->winUSBHandle,
-        dev->bulkInPipe,
-        dev->rxurbs[urb_num].buf,
-        sizeof(dev->rxurbs[urb_num].buf),
-        NULL,
-        &dev->rxurbs[urb_num].ovl
-    );
-
-    if (rc || GetLastError() == ERROR_IO_PENDING) {
+    DWORD err = GetLastError();
+    if (err == ERROR_IO_PENDING) {
+        dev->rxurbs[urb_num].pending = true;
         dev->last_error = CANDLE_ERR_OK;
         return true;
     }
@@ -503,12 +500,49 @@ static bool candle_prepare_read(candle_device_t *dev, unsigned urb_num)
 
 static bool candle_close_rxurbs(candle_device_t *dev)
 {
+    if (dev->winUSBHandle != NULL) {
+        WinUsb_AbortPipe(dev->winUSBHandle, dev->bulkInPipe);
+    }
+
     for (unsigned i=0; i<CANDLE_URB_COUNT; i++) {
+        if (dev->rxurbs[i].pending) {
+            CancelIoEx(dev->deviceHandle, &dev->rxurbs[i].ovl);
+
+            DWORD bytes_transfered;
+            WinUsb_GetOverlappedResult(dev->winUSBHandle,
+                                       &dev->rxurbs[i].ovl,
+                                       &bytes_transfered,
+                                       TRUE);
+            dev->rxurbs[i].pending = false;
+        }
+
         if (dev->rxevents[i] != NULL) {
             CloseHandle(dev->rxevents[i]);
+            dev->rxevents[i] = NULL;
+            memset(&dev->rxurbs[i].ovl, 0, sizeof(dev->rxurbs[i].ovl));
         }
     }
     return true;
+}
+
+static void candle_release_open_handles(candle_device_t *dev)
+{
+    candle_close_rxurbs(dev);
+
+    if (dev->txEvent) {
+        CloseHandle(dev->txEvent);
+        dev->txEvent = NULL;
+    }
+
+    if (dev->winUSBHandle) {
+        WinUsb_Free(dev->winUSBHandle);
+        dev->winUSBHandle = NULL;
+    }
+
+    if (dev->deviceHandle && dev->deviceHandle != INVALID_HANDLE_VALUE) {
+        CloseHandle(dev->deviceHandle);
+        dev->deviceHandle = NULL;
+    }
 }
 
 
@@ -519,10 +553,19 @@ bool __stdcall DLL candle_dev_open(candle_handle hdev)
     if (candle_dev_interal_open(dev)) {
         for (unsigned i=0; i<CANDLE_URB_COUNT; i++) {
             HANDLE ev = CreateEvent(NULL, true, false, NULL);
+            if (ev == NULL) {
+                dev->last_error = CANDLE_ERR_MALLOC;
+                candle_err_t last_error = dev->last_error;
+                candle_release_open_handles(dev);
+                dev->last_error = last_error;
+                return false;
+            }
             dev->rxevents[i] = ev;
             dev->rxurbs[i].ovl.hEvent = ev;
             if (!candle_prepare_read(dev, i)) {
-                candle_close_rxurbs(dev);
+                candle_err_t last_error = dev->last_error;
+                candle_release_open_handles(dev);
+                dev->last_error = last_error;
                 return false; // keep last_error from prepare_read call
             }
         }
@@ -543,17 +586,7 @@ bool __stdcall DLL candle_dev_close(candle_handle hdev)
 {
     candle_device_t *dev = (candle_device_t*)hdev;
 
-    candle_close_rxurbs(dev);
-
-    if (dev->txEvent) {
-        CloseHandle(dev->txEvent);
-        dev->txEvent = NULL;
-    }
-
-    WinUsb_Free(dev->winUSBHandle);
-    dev->winUSBHandle = NULL;
-    CloseHandle(dev->deviceHandle);
-    dev->deviceHandle = NULL;
+    candle_release_open_handles(dev);
 
     dev->last_error = CANDLE_ERR_OK;
     return true;
@@ -743,10 +776,16 @@ bool __stdcall DLL candle_frame_read(candle_handle hdev, candle_frame_t *frame, 
     DWORD bytes_transfered;
 
     if (!WinUsb_GetOverlappedResult(dev->winUSBHandle, &dev->rxurbs[urb_num].ovl, &bytes_transfered, false)) {
-        candle_prepare_read(dev, urb_num);
+        if (GetLastError() == ERROR_IO_INCOMPLETE) {
+            ResetEvent(dev->rxurbs[urb_num].ovl.hEvent);
+        } else {
+            dev->rxurbs[urb_num].pending = false;
+            candle_prepare_read(dev, urb_num);
+        }
         dev->last_error = CANDLE_ERR_READ_RESULT;
         return false;
     }
+    dev->rxurbs[urb_num].pending = false;
 
     if (bytes_transfered < sizeof(*frame)-4) {
         candle_prepare_read(dev, urb_num);
@@ -754,11 +793,9 @@ bool __stdcall DLL candle_frame_read(candle_handle hdev, candle_frame_t *frame, 
         return false;
     }
 
-    if (bytes_transfered < sizeof(*frame)) {
-        frame->timestamp_us = 0;
-    }
-
-    memcpy(frame, dev->rxurbs[urb_num].buf, sizeof(*frame));
+    memset(frame, 0, sizeof(*frame));
+    DWORD copy_len = (bytes_transfered < sizeof(*frame)) ? bytes_transfered : sizeof(*frame);
+    memcpy(frame, dev->rxurbs[urb_num].buf, copy_len);
 
     return candle_prepare_read(dev, urb_num);
 }
@@ -843,10 +880,16 @@ bool __stdcall DLL candle_fd_frame_read(candle_handle hdev, candle_fd_frame_t *f
     DWORD bytes_transfered;
 
     if (!WinUsb_GetOverlappedResult(dev->winUSBHandle, &dev->rxurbs[urb_num].ovl, &bytes_transfered, false)) {
-        candle_prepare_read(dev, urb_num);
+        if (GetLastError() == ERROR_IO_INCOMPLETE) {
+            ResetEvent(dev->rxurbs[urb_num].ovl.hEvent);
+        } else {
+            dev->rxurbs[urb_num].pending = false;
+            candle_prepare_read(dev, urb_num);
+        }
         dev->last_error = CANDLE_ERR_READ_RESULT;
         return false;
     }
+    dev->rxurbs[urb_num].pending = false;
 
     /* Minimum: classic CAN header (12 bytes) + at least 8 data bytes = 20 bytes */
     static const DWORD classic_min = sizeof(candle_frame_t) - 4;

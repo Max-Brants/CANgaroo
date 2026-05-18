@@ -22,6 +22,11 @@
 #pragma once
 
 #include <stdint.h>
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
+
 #include <windows.h>
 #include <winbase.h>
 #include <winusb.h>
@@ -63,6 +68,7 @@ typedef struct {
 
 typedef struct {
     OVERLAPPED ovl;
+    bool pending;
     uint8_t buf[512];
 } canlde_rx_urb;
 
