@@ -457,7 +457,7 @@ close_handle:
 
 static bool candle_prepare_read(candle_device_t *dev, unsigned urb_num)
 {
-    bool rc = WinUsb_ReadPipe(
+    BOOL rc = WinUsb_ReadPipe(
         dev->winUSBHandle,
         dev->bulkInPipe,
         dev->rxurbs[urb_num].buf,
@@ -466,13 +466,39 @@ static bool candle_prepare_read(candle_device_t *dev, unsigned urb_num)
         &dev->rxurbs[urb_num].ovl
     );
 
-    if (rc || (GetLastError()!=ERROR_IO_PENDING)) {
-        dev->last_error = CANDLE_ERR_PREPARE_READ;
-        return false;
-    } else {
+    if (rc) {
+        /* Synchronous completion: data is already in buf and the event is
+         * signaled. WaitForMultipleObjects will return immediately on the
+         * next call and GetOverlappedResult will succeed, so this is fine. */
         dev->last_error = CANDLE_ERR_OK;
         return true;
     }
+
+    if (GetLastError() == ERROR_IO_PENDING) {
+        dev->last_error = CANDLE_ERR_OK;
+        return true;
+    }
+
+    /* Pipe error — attempt abort/reset recovery before giving up. */
+    WinUsb_AbortPipe(dev->winUSBHandle, dev->bulkInPipe);
+    WinUsb_ResetPipe(dev->winUSBHandle, dev->bulkInPipe);
+
+    rc = WinUsb_ReadPipe(
+        dev->winUSBHandle,
+        dev->bulkInPipe,
+        dev->rxurbs[urb_num].buf,
+        sizeof(dev->rxurbs[urb_num].buf),
+        NULL,
+        &dev->rxurbs[urb_num].ovl
+    );
+
+    if (rc || GetLastError() == ERROR_IO_PENDING) {
+        dev->last_error = CANDLE_ERR_OK;
+        return true;
+    }
+
+    dev->last_error = CANDLE_ERR_PREPARE_READ;
+    return false;
 }
 
 static bool candle_close_rxurbs(candle_device_t *dev)
