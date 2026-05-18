@@ -23,6 +23,7 @@
 
 #include <QList>
 #include <QMutex>
+#include <QString>
 #include <QWaitCondition>
 
 #include <atomic>
@@ -49,6 +50,7 @@ struct CandleSharedDevice
     static constexpr int MAX_CHANNELS = 8;
 
     candle_handle handle{nullptr};
+    QString productName{"candle"};
 
     // Open/close reference count — protected by openMutex.
     // The USB device is opened when the count reaches 1 and closed when it

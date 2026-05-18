@@ -229,13 +229,13 @@ CandleApiInterface::~CandleApiInterface()
 
 QString CandleApiInterface::getName() const
 {
-    QString name = QString::fromStdWString(getPath());
-    return "candle" + QString::number(getId() >> 8) + "_ch" + QString::number(_channel);
+    return _sharedDev->productName + QString::number(getId() >> 8) + "_ch" + QString::number(_channel);
 }
 
 QString CandleApiInterface::getDetailsStr() const
 {
-    return QString::fromStdWString(getPath()) + " ch" + QString::number(_channel);
+    return _sharedDev->productName + " ch" + QString::number(_channel)
+           + " | " + QString::fromStdWString(getPath());
 }
 
 uint8_t CandleApiInterface::getChannel() const

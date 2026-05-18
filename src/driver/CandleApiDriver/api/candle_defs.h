@@ -63,7 +63,7 @@ typedef struct {
 
 typedef struct {
     OVERLAPPED ovl;
-    uint8_t buf[128];
+    uint8_t buf[512];
 } canlde_rx_urb;
 
 typedef struct {

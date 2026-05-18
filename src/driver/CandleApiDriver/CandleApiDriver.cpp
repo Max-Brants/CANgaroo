@@ -70,6 +70,28 @@ static std::wstring baseDevicePath(const std::wstring &path)
 }
 
 
+// Map known VID/PID combinations to human-readable product names.
+// The Windows device path is lower-case and contains "vid_XXXX&pid_XXXX".
+static QString productNameFromPath(const std::wstring &path)
+{
+    std::wstring lower = path;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+
+    auto extract = [&](const wchar_t *tag) -> uint16_t {
+        auto pos = lower.find(tag);
+        if (pos == std::wstring::npos)
+            return 0;
+        return static_cast<uint16_t>(wcstoul(lower.c_str() + pos + wcslen(tag), nullptr, 16));
+    };
+
+    const uint16_t vid = extract(L"vid_");
+    const uint16_t pid = extract(L"pid_");
+
+    if (vid == 0x1209 && pid == 0xCA01) return QStringLiteral("CANnectivity");
+
+    return QStringLiteral("candle");
+}
+
 CandleApiDriver::CandleApiDriver(Backend &backend)
   : CanDriver(backend),
     setupPage(new GenericCanSetupPage(0))
@@ -153,6 +175,7 @@ bool CandleApiDriver::update()
 
         auto sharedDev = std::make_shared<CandleSharedDevice>();
         sharedDev->handle = shared_handle;
+        sharedDev->productName = productNameFromPath(devPath);
         _devices[baseKey] = sharedDev;
 
         // One BusInterface per channel, all sharing the same physical device.
