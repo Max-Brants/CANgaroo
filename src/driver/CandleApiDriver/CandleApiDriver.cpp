@@ -124,6 +124,7 @@ bool CandleApiDriver::update()
         return true;
     }
 
+    int deviceCounter = 0;
     for (uint8_t i = 0; i < num_devices; i++) {
         candle_handle dev;
         if (!candle_dev_get(clist, i, &dev)) {
@@ -179,6 +180,7 @@ bool CandleApiDriver::update()
         auto sharedDev = std::make_shared<CandleSharedDevice>();
         sharedDev->handle = shared_handle;
         sharedDev->productName = productNameFromPath(devPath);
+        sharedDev->deviceIndex = deviceCounter++;
         _devices[baseKey] = sharedDev;
 
         // One BusInterface per channel, all sharing the same physical device.

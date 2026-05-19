@@ -23,6 +23,8 @@
 #include <QDateTime>
 #include <QMutexLocker>
 
+#include <algorithm>
+
 CandleApiInterface::CandleApiInterface(CandleApiDriver *driver,
                                        std::shared_ptr<CandleSharedDevice> sharedDev,
                                        uint8_t channel)
@@ -231,7 +233,7 @@ CandleApiInterface::~CandleApiInterface()
 
 QString CandleApiInterface::getName() const
 {
-    return _sharedDev->productName + QString::number(getId() >> 8) + "_ch" + QString::number(_channel);
+    return _sharedDev->productName + QString::number(_sharedDev->deviceIndex) + "_ch" + QString::number(_channel);
 }
 
 QString CandleApiInterface::getDetailsStr() const
@@ -529,7 +531,7 @@ void CandleApiInterface::sendMessage(const BusMessage &msg)
             frame.can_id |= CANDLE_ID_RTR;
         }
 
-        const uint8_t len = msg.getLength();
+        const uint8_t len = std::min(msg.getLength(), static_cast<uint8_t>(8u));
         frame.can_dlc = len;
         for (int i = 0; i < len; i++) {
             frame.data[i] = msg.getByte(i);

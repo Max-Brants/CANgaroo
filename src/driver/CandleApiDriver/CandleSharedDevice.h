@@ -51,6 +51,7 @@ struct CandleSharedDevice
 
     candle_handle handle{nullptr};
     QString productName{"candle"};
+    int deviceIndex{0};
 
     // Open/close reference count — protected by openMutex.
     // The USB device is opened when the count reaches 1 and closed when it

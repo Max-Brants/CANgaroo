@@ -1,0 +1,1283 @@
+\documentclass[a4paper,11pt]{article}
+
+% ─── Packages ─────────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{listings}
+\usepackage{parskip}
+\usepackage{microtype}
+\usepackage{tcolorbox}
+\usepackage{lmodern}
+\usepackage{array}
+\usepackage{tabularx}
+
+% ─── Page geometry ────────────────────────────────────────────────────────────
+\geometry{
+  top    = 2.5cm,
+  bottom = 2.5cm,
+  left   = 2.5cm,
+  right  = 2.5cm
+}
+
+% ─── Colours ──────────────────────────────────────────────────────────────────
+\definecolor{canblue}{RGB}{30, 90, 160}
+\definecolor{canlight}{RGB}{220, 235, 255}
+\definecolor{cangray}{RGB}{245, 245, 245}
+\definecolor{codegray}{RGB}{100, 100, 100}
+\definecolor{notegreen}{RGB}{0, 120, 60}
+\definecolor{warnorange}{RGB}{200, 100, 0}
+
+% ─── Hyperref setup ───────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks   = true,
+  linkcolor    = canblue,
+  urlcolor     = canblue,
+  citecolor    = canblue,
+  pdftitle     = {CANgaroo User Manual},
+  pdfauthor    = {CANgaroo Project},
+  pdfsubject   = {CAN Bus Analyzer and Trace Tool},
+  pdfkeywords  = {CAN, LIN, bus analyzer, automotive, trace}
+}
+
+% ─── Section styling ──────────────────────────────────────────────────────────
+\titleformat{\section}
+  {\Large\bfseries\color{canblue}}
+  {\thesection}{1em}{}[\color{canblue}\titlerule]
+
+\newcommand{\sectionbreak}{\clearpage}
+
+\titleformat{\subsection}
+  {\large\bfseries\color{canblue!80!black}}
+  {\thesubsection}{1em}{}
+
+\titleformat{\subsubsection}
+  {\normalsize\bfseries}
+  {\thesubsubsection}{1em}{}
+
+% ─── Code listings ────────────────────────────────────────────────────────────
+\lstset{
+  basicstyle    = \ttfamily\small,
+  keywordstyle  = \color{canblue}\bfseries,
+  commentstyle  = \color{codegray}\itshape,
+  stringstyle   = \color{notegreen},
+  backgroundcolor = \color{cangray},
+  frame         = single,
+  rulecolor     = \color{canblue!30},
+  breaklines    = true,
+  showstringspaces = false,
+  numbers       = left,
+  numberstyle   = \tiny\color{codegray},
+  numbersep     = 8pt,
+  tabsize       = 4,
+  captionpos    = b
+}
+
+% ─── tcolorbox styles ─────────────────────────────────────────────────────────
+\tcbuselibrary{skins, breakable}
+
+\newtcolorbox{notebox}[1][Note]{
+  colback  = canlight,
+  colframe = canblue,
+  fonttitle = \bfseries,
+  title    = #1,
+  breakable
+}
+
+\newtcolorbox{warnbox}[1][Warning]{
+  colback  = yellow!10,
+  colframe = warnorange,
+  fonttitle = \bfseries\color{warnorange},
+  title    = #1,
+  breakable
+}
+
+% ─── Header / Footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{canblue}\textbf{CANgaroo} User Manual}
+\fancyhead[R]{\small\color{canblue}\nouppercase{\leftmark}}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\headrule}{\color{canblue}\hrule width\headwidth height\headrulewidth}
+
+% ─── Shorthand macros ─────────────────────────────────────────────────────────
+\newcommand{\key}[1]{\texttt{\small[#1]}}
+\newcommand{\menu}[1]{\textit{#1}}
+\newcommand{\ui}[1]{\textbf{#1}}
+\newcommand{\file}[1]{\texttt{#1}}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+
+% ─── Title page ───────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{1.5cm}
+
+  \includegraphics[width=3.5cm]{../src/assets/cangaroo.png}\\[1.2em]
+
+  {\Huge\bfseries\color{canblue} CANgaroo}\\[0.6em]
+  {\Large\color{canblue!70!black} CAN Bus Analyzer \& Trace Tool}\\[3em]
+
+  \textcolor{canblue}{\rule{0.6\textwidth}{1.5pt}}\\[3em]
+
+  {\LARGE\bfseries User Manual}\\[1em]
+  {\large Version 0.1}\\[4em]
+
+  {\large Open-source automotive bus analysis software}\\[0.5em]
+  {\large for CAN, CAN-FD, and LIN}\\[5em]
+
+  \textcolor{canblue}{\rule{0.6\textwidth}{0.5pt}}\\[2em]
+  {\normalsize \today}
+
+  \vfill
+  {\small This document describes CANgaroo and its features.\\
+  CANgaroo is free and open-source software.\\[0.5em]
+  \url{https://github.com/Schildkroet/CANgaroo}}
+\end{titlepage}
+
+% ─── Table of contents ────────────────────────────────────────────────────────
+\tableofcontents
+\newpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+
+CANgaroo is a free, open-source CAN bus analyzer and trace tool built with Qt6 and C++.
+It provides a graphical interface for capturing, analyzing, decoding, generating, replaying,
+and logging CAN, CAN-FD, and LIN bus traffic.
+
+\subsection{Key Features}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Real-time message capture from multiple CAN/LIN interfaces simultaneously
+  \item Aggregated and chronological trace views
+  \item DBC and LDF database loading for signal decoding
+  \item Live signal graph with time series, scatter, gauge, and text visualizations
+  \item Manual and cyclic message transmission (TX Generator)
+  \item File replay with speed control and channel mapping
+  \item Python scripting engine for automation and custom logic
+  \item Protocol decoders for UDS (ISO-TP) and J1939
+  \item Export to candump, Vector ASC, MDF4, PCAP, and PCAP-NG
+  \item Configurable workspaces saved as XML
+  \item Light and Dark themes
+\end{itemize}
+
+\subsection{Supported Platforms}
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{0.8\textwidth}{lX}
+    \toprule
+    \textbf{Platform} & \textbf{Notes} \\
+    \midrule
+    Linux   & Full support including SocketCAN \\
+    Windows & Full support; additional drivers for PEAK, Kvaser, Vector, TinyCAN \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Installation and First Start}
+
+\subsection{Pre-built Binaries}
+
+Pre-built binaries for Linux and Windows are available on the GitHub releases page:\\
+\url{https://github.com/Schildkroet/CANgaroo/releases}
+
+Download the appropriate package for your platform and run the installer or extract
+the archive. No compilation is required.
+
+\subsection{Linux (Build from Source)}
+
+To build from source, install the required Qt6 libraries and build tools:
+
+\begin{lstlisting}[language=bash, caption={Build on Linux}]
+sudo apt install qt6-base-dev qt6-serialport-dev qt6-serialbus-dev \
+     qt6-charts-dev libnl-3-dev libnl-route-3-dev
+
+git clone https://github.com/Schildkroet/CANgaroo.git
+cd CANgaroo/src
+qmake6
+make -j$(nproc)
+./cangaroo
+\end{lstlisting}
+
+\subsection{Windows (Build from Source)}
+
+For a custom build with optional drivers:
+
+\begin{lstlisting}[language=bash, caption={Optional driver flags}]
+# Enable PEAK CAN driver
+qmake6 CONFIG+=peakcan
+
+# Enable Kvaser driver
+qmake6 CONFIG+=kvaser
+
+# Both optional drivers
+qmake6 CONFIG+=peakcan CONFIG+=kvaser
+\end{lstlisting}
+
+\subsection{First Start}
+
+On first launch, CANgaroo opens with an empty workspace and no interfaces configured.
+The recommended first steps are:
+
+\begin{enumerate}
+  \item Open \menu{Measurement \textrightarrow{} Setup Interface} (\key{Ctrl+Alt+S}) to add
+        your hardware interfaces.
+  \item Optionally load a DBC or LDF database via the Setup dialog.
+  \item Press \key{F5} or click \ui{Start} to begin capturing.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{User Interface Overview}
+
+CANgaroo uses a tabbed, dockable multi-window layout. Each tab is an independent
+workspace that can contain any combination of views arranged as docked panels.
+
+\subsection{Main Window}
+
+The main window consists of:
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Menu bar] Access to all application functions (File, Measurement, Trace, Window, Help).
+  \item[Toolbar] Quick-access buttons: \ui{Start}, \ui{Stop}, \ui{Setup}, and \ui{Graph}.
+  \item[Tab bar] Tabs, each containing an independent layout of views.
+  \item[Status bar] Displays the application version.
+\end{description}
+
+\subsection{Creating and Arranging Views}
+
+New views are created from the \menu{Window \textrightarrow{} New} submenu.
+Available view types are listed in Section~\ref{sec:views}.
+Views can be:
+
+\begin{itemize}
+  \item Docked inside a tab (drag the title bar to a docking zone).
+  \item Floated as independent windows (drag outside the tab area).
+  \item Closed individually (the \ui{X} button on the view title bar).
+\end{itemize}
+
+\subsection{Workspace Files}
+
+The complete layout, all view configurations, database paths, filter states, and
+TX generator messages are saved as an XML workspace file (\file{.xml}).
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{0.75\textwidth}{lX}
+    \toprule
+    \textbf{Action} & \textbf{Shortcut} \\
+    \midrule
+    New Workspace     & \key{Ctrl+N} \\
+    Open Workspace    & \key{Ctrl+O} \\
+    Save Workspace    & \key{Ctrl+S} \\
+    Save As           & \key{Ctrl+Shift+S} \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+The \menu{File} menu also keeps a list of the eight most recently opened workspaces for
+quick access.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Interface Setup}
+\label{sec:setup}
+
+\subsection{Setup Dialog}
+
+Open the setup dialog via \menu{Measurement \textrightarrow{} Setup Interface} or
+\key{Ctrl+Alt+S}.
+
+The dialog shows a tree of \textbf{Networks} and the \textbf{Interfaces} within each network.
+Right-click on any item to access context-menu actions.
+
+\subsubsection{Adding a Network}
+
+A network is a logical grouping of interfaces (e.g., powertrain network, body network).
+Click \ui{Add Network} to create one. A network can contain multiple interfaces.
+
+\subsubsection{Adding an Interface}
+
+With a network selected, click \ui{Add Interface}. A dialog lists all interfaces
+discovered by the installed drivers. Select the desired hardware channel and confirm.
+
+\subsubsection{Database Files}
+
+Each network can have one or more DBC (CAN) or LDF (LIN) database files associated
+with it. These files provide the signal and message definitions needed for decoding.
+
+\begin{itemize}
+  \item Click \ui{Add Database} (or right-click \textrightarrow{} Add) to load a \file{.dbc}
+        or \file{.ldf} file.
+  \item \ui{Reload} re-parses the file from disk without restarting the measurement.
+  \item \ui{Remove} unloads the database from the network.
+\end{itemize}
+
+\subsection{Supported Hardware Drivers}
+\label{sec:drivers}
+
+\begin{longtable}{p{3.2cm} p{2.2cm} p{7.8cm}}
+  \toprule
+  \textbf{Driver} & \textbf{Platform} & \textbf{Description} \\
+  \midrule
+  \endhead
+  SocketCAN       & Linux    & Native Linux kernel CAN interface. Supports all network
+                               devices exposed by the kernel (e.g.\ \texttt{can0},
+                               \texttt{vcan0}). \\[0.4em]
+  SLCAN           & All      & Serial Line CAN. Communicates with CAN adapters
+                               that use the SLCAN ASCII protocol over a serial port. \\[0.4em]
+  GrIP            & All      & Custom GrIP protocol adapter over serial or network. \\[0.4em]
+  CandleAPI       & All      & USB CAN adapters based on the \textit{gs\_usb} protocol
+                               (Geschwister Schneider USB/CAN adapters, CANtact, etc.). \\[0.4em]
+  CANBlaster      & All      & Built-in virtual loopback / message generator for
+                               development and testing. Enable via
+                               \menu{Measurement \textrightarrow{} Driver \textrightarrow{} CANblaster}. \\[0.4em]
+  Vector          & Windows  & Vector hardware (VN series etc.) via the Qt SerialBus
+                               \texttt{vectorcan} plugin. \\[0.4em]
+  Kvaser          & Windows  & Kvaser CAN adapters. Requires \texttt{CONFIG+=kvaser}
+                               and the CANlib SDK. \\[0.4em]
+  PEAK CAN        & Windows  & PCAN devices. Requires \texttt{CONFIG+=peakcan}
+                               and the PCAN-Basic SDK. \\[0.4em]
+  TinyCAN         & Windows  & TinyCAN adapters via Qt SerialBus. Enable via
+                               \menu{Measurement \textrightarrow{} Driver \textrightarrow{} TinyCAN}. \\
+  \bottomrule
+\end{longtable}
+
+\subsection{Starting and Stopping a Measurement}
+
+\begin{itemize}
+  \item \ui{Start} (\key{F5}): Opens all configured interfaces and begins capturing.
+  \item \ui{Stop} (\key{Shift+F5}): Closes all interfaces and ends the capture session.
+  \item \ui{Reload Interfaces} (\menu{Measurement \textrightarrow{} Reload Interfaces}):
+        Re-scans all drivers for available hardware without restarting.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Views}
+\label{sec:views}
+
+\subsection{Trace View}
+
+The Trace View is the primary display for captured bus traffic. It can be opened
+multiple times (\key{Ctrl+Shift+T}) for independent filtering configurations.
+
+\subsubsection{Display Modes}
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Aggregated mode] Shows one row per unique message ID. Each row is updated
+        in-place with the latest data and a running occurrence counter. Ideal for
+        monitoring message content.
+  \item[Unified / Chronological mode] Shows every individual frame in the order it
+        was received, appended at the bottom. Ideal for timing analysis.
+\end{description}
+
+Toggle between modes using the button in the Trace View toolbar.
+
+\subsubsection{Categories}
+
+The Trace View supports multiple category tabs:
+\begin{itemize}
+  \item \ui{Aggregated} — default CAN/LIN message view.
+  \item \ui{UDS} — reassembled UDS (ISO-TP) messages decoded from raw CAN frames.
+  \item \ui{J1939} — reassembled J1939 PGN messages.
+\end{itemize}
+
+\subsubsection{Filtering}
+
+Each Trace View instance has independent filter settings:
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[TX/RX toggle] Show or hide transmitted (TX) and/or received (RX) frames.
+  \item[Message ID filter] Restrict display to a specific message ID or range.
+  \item[Interface filter] Show only frames from a selected bus interface.
+  \item[Advanced filter dialog] Combine multiple criteria using the filter dialog button.
+\end{description}
+
+\subsubsection{Timestamp Display}
+
+Three timestamp modes are available via the column header or toolbar:
+\begin{itemize}
+  \item \textbf{Relative} — time since the start of the measurement.
+  \item \textbf{Absolute} — wall-clock time.
+  \item \textbf{Delta} — time since the previous frame of the same ID.
+\end{itemize}
+
+\subsubsection{Clearing the Trace}
+
+Press \key{Esc} or use \menu{Trace \textrightarrow{} Clear} to clear all captured messages
+from memory.
+
+\subsection{Log View}
+
+The Log View (\key{Ctrl+Shift+L}) displays application-level diagnostic messages
+(driver errors, connection events, parsing warnings, etc.).
+
+\begin{itemize}
+  \item Click \ui{Clear} to empty the log.
+  \item Use \ui{Export} to save the log contents to a file.
+\end{itemize}
+
+\subsection{Graph View}
+\label{sec:graph}
+
+The Graph View (\key{Ctrl+Shift+G}) plots decoded signal values in real time.
+Multiple Graph Views can be open simultaneously.
+
+\subsubsection{Adding Signals}
+
+The left panel shows a signal tree derived from loaded DBC/LDF databases.
+Use the search box to filter by signal name. Double-click a signal (or drag it into
+the plot area) to add it to the current visualization.
+
+\subsubsection{Visualization Types}
+
+Each column in the Graph View can display one of the following types:
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Time Series] A scrolling line graph of signal value vs.\ time. Most
+        commonly used for continuous signals.
+  \item[Scatter Plot] XY scatter visualization for correlating two signal values.
+  \item[Gauge] A circular dial showing the current value of a single signal,
+        including configurable min/max range.
+  \item[Text] Displays the latest decoded value as text, useful for enumerated
+        or low-update-rate signals.
+\end{description}
+
+\subsubsection{Controls}
+
+\begin{itemize}
+  \item \ui{Zoom In / Out / Reset}: Scale the time axis.
+  \item \ui{Time Window}: Set the scrolling window duration (e.g.\ show the last 10 s).
+  \item Stale values are visually dimmed when no new frame has been received for a
+        configurable period.
+\end{itemize}
+
+\subsubsection{Standalone Graph Window}
+
+\key{Ctrl+Shift+B} opens a floating, undocked graph window that can be moved to a
+second monitor.
+
+\subsection{CAN Status View}
+
+The CAN Status View shows live bus statistics for every active interface:
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Column} & \textbf{Description} \\
+    \midrule
+    Driver / Interface & Driver name and interface identifier \\
+    State              & Bus state (Active, Warning, Passive, Bus-off) \\
+    RX / TX Frames     & Total received / transmitted frame count \\
+    RX / TX Errors     & Error frame counters \\
+    RX Overrun         & Frames lost due to receive buffer overflow \\
+    TX Dropped         & Frames dropped because the TX queue was full \\
+    Bus Load           & Estimated bus utilisation in percent \\
+    Warning / Passive / Bus-off & Escalating error state counters \\
+    Restarts           & Number of automatic bus-off recoveries \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Click \ui{Clear} to reset all counters. Statistics update automatically while a
+measurement is running.
+
+\subsection{Raw TX View (Message View)}
+\label{sec:rawtx}
+
+The Raw TX View allows composing and sending a single CAN or CAN-FD frame manually.
+
+\subsubsection{Frame Fields}
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Message ID] Enter the frame ID in hexadecimal. Enable the \ui{Extended}
+        checkbox for 29-bit IDs (EFF).
+  \item[DLC] Data Length Code (0–8 for CAN, 0–64 for CAN-FD).
+  \item[Data bytes] Edit individual bytes in the 8-column grid.
+  \item[FD / BRS] Enable CAN-FD framing and Bit Rate Switch.
+  \item[RTR] Set the Remote Transmission Request flag.
+  \item[Interface] Select which hardware channel to transmit on.
+\end{description}
+
+\subsubsection{Signal-Based Editing}
+
+When a DBC database is loaded and the entered ID matches a known message, a signal
+table appears below the byte grid. Enter physical values into the signal rows;
+CANgaroo encodes them into the frame bytes automatically. Multiplexed signals show
+a mux selector dropdown.
+
+Click \ui{Send} to transmit the composed frame once.
+
+\subsection{TX Generator View}
+\label{sec:txgen}
+
+The TX Generator View manages a list of messages that are transmitted periodically
+(cyclically) or on demand.
+
+\subsubsection{Adding Messages}
+
+\begin{itemize}
+  \item \ui{Add from Database}: Browse loaded DBC messages and add one or more by
+        name. The frame bytes and interval are pre-populated from the database.
+  \item \ui{Add Manually}: Create a blank entry and fill in the ID, DLC, data, and
+        interval manually.
+\end{itemize}
+
+\subsubsection{Message List Columns}
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Column} & \textbf{Description} \\
+    \midrule
+    Enable    & Checkbox to include/exclude this message from cyclic transmission \\
+    ID        & CAN frame ID (hex) \\
+    DLC       & Data length \\
+    Data      & Frame payload (hex bytes), editable inline \\
+    Interval  & Transmission interval in milliseconds \\
+    Interface & Target hardware channel \\
+    Count     & Number of times this message has been sent \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsubsection{Toolbar Actions}
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Run All / Stop All] Start or stop cyclic transmission of all enabled messages.
+  \item[Send Once] Transmit the selected message a single time immediately.
+  \item[Enable / Disable All] Toggle the enable checkbox for every message in the list.
+  \item[Random Payload] Fill the selected message's data bytes with random values
+        (useful for stress testing).
+  \item[Compact / Expanded Layout] Switch between a condensed list and an expanded
+        view that shows the bit matrix editor.
+  \item[Zoom Slider] Adjust the row height in the expanded layout.
+\end{description}
+
+\subsubsection{Bit Matrix Editor}
+
+In expanded layout, each message row shows a bit matrix widget where individual bits
+can be toggled by clicking. This is particularly useful for testing bit-level signal
+encoding.
+
+\subsection{Script View}
+\label{sec:script}
+
+The Script View provides an embedded Python 3 scripting engine that can interact
+with the bus in real time. All bus access is available through the \texttt{cangaroo}
+module which is automatically importable inside the engine.
+
+\begin{notebox}
+Python 3 must be installed and discoverable on the system \texttt{PATH} (Linux) or
+bundled with the installation (Windows) for the Script View to function.
+\end{notebox}
+
+\subsubsection{Editor and Console}
+
+The view is split into two panes:
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Editor (top)] Python code editor. Scripts can be typed directly, or loaded
+        from and saved to a \file{.py} file using the \ui{Load} / \ui{Save} buttons.
+  \item[Console (bottom)] Captures all \texttt{print()} output and exception
+        tracebacks from the running script. Click \ui{Clear} to empty it.
+\end{description}
+
+The \ui{Auto-run} checkbox causes the script to start automatically each time a
+measurement begins. \ui{Run} and \ui{Stop} control the script manually.
+
+\subsubsection{The \texttt{cangaroo} Module}
+
+Import the module at the top of every script:
+
+\begin{lstlisting}[language=Python]
+import cangaroo
+\end{lstlisting}
+
+The sections below describe every function and class in the module.
+
+% ── Message class ─────────────────────────────────────────────────────────────
+\subsubsection{Message Class}
+
+\texttt{cangaroo.Message} represents a single CAN or LIN frame.
+
+\begin{lstlisting}[language=Python, caption={Constructing and inspecting a Message}]
+msg = cangaroo.Message()        # empty frame
+msg = cangaroo.Message(0x123)   # frame with ID 0x123
+
+# Properties (read/write unless noted)
+msg.id        = 0x1A0          # CAN frame ID
+msg.dlc       = 8              # data length (0-8 classic, 0-64 CAN-FD)
+msg.extended  = True           # 29-bit extended ID (EFF)
+msg.fd        = True           # CAN-FD frame
+msg.brs       = True           # bit-rate switch (CAN-FD only)
+msg.rtr       = False          # remote transmission request
+msg.bustype   = "CAN"          # "CAN" or "LIN"
+
+# Read-only properties
+ts  = msg.timestamp            # float, seconds since measurement start
+iid = msg.interface_id         # int, interface that produced the frame
+rx  = msg.is_rx                # True if received, False if TX echo
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Accessing frame payload}]
+msg.set_byte(0, 0xFF)          # write one byte
+b = msg.get_byte(0)            # read one byte -> int
+
+raw = msg.get_data()           # all bytes -> bytes object
+msg.set_data(b'\xDE\xAD\x00') # set payload from bytes (updates dlc)
+\end{lstlisting}
+
+A LIN message is created with a dedicated helper:
+
+\begin{lstlisting}[language=Python]
+lin = cangaroo.make_lin_message(id=0x21, dlc=4)
+\end{lstlisting}
+
+% ── Send / Receive ────────────────────────────────────────────────────────────
+\subsubsection{Sending and Receiving Frames}
+
+\begin{lstlisting}[language=Python, caption={Send a single frame}]
+msg = cangaroo.Message(0x100)
+msg.dlc = 4
+msg.set_data(b'\x01\x02\x03\x04')
+cangaroo.send(msg)                     # sends on interface 0
+cangaroo.send(msg, interface_id=1)     # sends on interface 1
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Blocking receive loop}]
+while True:
+    msgs = cangaroo.receive(timeout=1.0)   # blocks up to 1 second
+    for msg in msgs:
+        print(msg)
+\end{lstlisting}
+
+\texttt{receive()} returns a list (possibly empty on timeout) of \texttt{Message}
+objects. By default transmitted frames are excluded; enable TX echo to include them:
+
+\begin{lstlisting}[language=Python]
+cangaroo.enable_tx_echo(True)
+\end{lstlisting}
+
+% ── RX filter ─────────────────────────────────────────────────────────────────
+\subsubsection{RX Filtering}
+
+An ID/mask filter limits which frames enter the \texttt{receive()} queue.
+All other frames are silently discarded.
+
+\begin{lstlisting}[language=Python, caption={Accept only ID 0x100 (standard frames)}]
+cangaroo.set_filter(id=0x100, mask=0x7FF, extended=False)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Accept a range of IDs (0x200-0x2FF)}]
+cangaroo.set_filter(id=0x200, mask=0x700)
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Remove the filter (accept all frames)}]
+cangaroo.clear_filter()
+\end{lstlisting}
+
+The \texttt{extended} argument constrains matching to standard (\texttt{False})
+or extended (\texttt{True}) IDs. Omit it (or pass \texttt{None}) to match both.
+
+% ── Periodic TX ───────────────────────────────────────────────────────────────
+\subsubsection{Periodic (Cyclic) Transmission}
+
+\begin{lstlisting}[language=Python, caption={Send a heartbeat every 100 ms}]
+msg = cangaroo.Message(0x123)
+msg.dlc = 2
+msg.set_data(b'\xDE\xAD')
+
+handle = cangaroo.send_periodic(msg, interval_ms=100)
+
+# ... later ...
+cangaroo.stop_periodic(handle)
+\end{lstlisting}
+
+Multiple periodic tasks can run simultaneously. Each returns an independent
+integer handle. The task stops automatically when the script is stopped or the
+measurement ends.
+
+% ── Trace access ──────────────────────────────────────────────────────────────
+\subsubsection{Trace Access}
+
+\begin{lstlisting}[language=Python, caption={Read from the captured trace}]
+n = cangaroo.trace_size()           # total number of stored messages
+
+msgs = cangaroo.get_trace()         # get all messages
+msgs = cangaroo.get_trace(count=50) # get last 50 messages
+
+cangaroo.clear_trace()              # clear the trace buffer
+\end{lstlisting}
+
+% ── Measurement control ───────────────────────────────────────────────────────
+\subsubsection{Measurement Control}
+
+\begin{lstlisting}[language=Python]
+if not cangaroo.measurement_running():
+    cangaroo.start_measurement()
+
+# ... do work ...
+
+cangaroo.stop_measurement()
+\end{lstlisting}
+
+% ── Interface helpers ─────────────────────────────────────────────────────────
+\subsubsection{Interface Helpers}
+
+\begin{lstlisting}[language=Python, caption={List all active interfaces}]
+for intf in cangaroo.interfaces():
+    print(intf["id"], intf["name"])
+
+name = cangaroo.interface_name(0)   # name of interface with ID 0
+\end{lstlisting}
+
+% ── Logging ───────────────────────────────────────────────────────────────────
+\subsubsection{Logging}
+
+Messages written via the logging functions appear in the CANgaroo Log View, not
+just in the script console.
+
+\begin{lstlisting}[language=Python]
+cangaroo.log("script started")          # same as log_info
+cangaroo.log_info("measurement OK")
+cangaroo.log_warning("voltage low")
+cangaroo.log_error("unexpected response")
+\end{lstlisting}
+
+% ── DBC / CAN database ────────────────────────────────────────────────────────
+\subsubsection{CAN Database (DBC) Access}
+
+When a DBC file is loaded in the Setup Dialog, the scripting engine can decode and
+encode signals.
+
+\paragraph{Listing databases}
+
+\begin{lstlisting}[language=Python]
+for db in cangaroo.databases():
+    print(db["file"], db["network"])
+    for msg in db["messages"]:
+        print(" ", msg["name"], hex(msg["id"]), msg["signals"])
+\end{lstlisting}
+
+\paragraph{Decoding received frames}
+
+\begin{lstlisting}[language=Python, caption={Decode signals from a received frame}]
+msgs = cangaroo.receive()
+for msg in msgs:
+    result = cangaroo.decode(msg)
+    if result:
+        for name, sig in result["signals"].items():
+            print(f"{name}: {sig['value']} {sig['unit']}")
+\end{lstlisting}
+
+The returned dictionary has the structure:
+
+\begin{lstlisting}[language=Python]
+{
+    "message": "EngineData",   # DBC message name
+    "id":      0x100,          # raw CAN ID
+    "sender":  "ECU1",         # transmitting node (if defined)
+    "signals": {
+        "EngineSpeed": {
+            "value":      3500.0,   # physical value
+            "raw":        7000,     # raw integer value
+            "unit":       "rpm",
+            "min":        0.0,
+            "max":        8000.0,
+            "value_name": "",       # enum label if defined
+        },
+        ...
+    }
+}
+\end{lstlisting}
+
+\paragraph{Extracting a single signal}
+
+\begin{lstlisting}[language=Python]
+speed = cangaroo.signal_value(msg, "EngineSpeed")  # float or None
+\end{lstlisting}
+
+\paragraph{Finding a message definition}
+
+\begin{lstlisting}[language=Python]
+defn = cangaroo.find_message("EngineData")    # by name
+defn = cangaroo.find_message(0x100)           # by raw ID
+defn = cangaroo.lookup(received_msg)          # by live BusMessage
+# defn is None if the ID is not in any loaded DBC
+\end{lstlisting}
+
+\paragraph{Encoding frames from signal values}
+
+\begin{lstlisting}[language=Python, caption={Build and send a frame by signal name}]
+msg = cangaroo.encode("EngineData", {
+    "EngineSpeed": 3500.0,
+    "EngineTemp":  90.0,
+})
+cangaroo.send(msg)
+\end{lstlisting}
+
+\texttt{encode()} accepts either the message name (string) or raw CAN ID (integer)
+as the first argument.
+
+% ── LIN database ─────────────────────────────────────────────────────────────
+\subsubsection{LIN Database (LDF) Access}
+
+\begin{lstlisting}[language=Python, caption={Decode a received LIN frame}]
+msgs = cangaroo.receive()
+for msg in msgs:
+    if msg.bustype == "LIN":
+        result = cangaroo.decode_lin(msg)
+        if result:
+            for name, sig in result["signals"].items():
+                print(f"{name}: {sig['value']} {sig['unit']}")
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={Look up a LIN frame definition}]
+frame = cangaroo.find_lin_frame("WheelSpeed")   # by name
+frame = cangaroo.find_lin_frame(0x21)           # by frame ID
+# frame["signals"] is a list of signal dicts
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption={List all loaded LDF databases}]
+for db in cangaroo.lin_databases():
+    print(db["file"], db["master"], db["speed"])
+    for f in db["frames"]:
+        print(" ", f["name"], f["id"], f["length"])
+\end{lstlisting}
+
+% ── AUTOSAR E2E ───────────────────────────────────────────────────────────────
+\subsubsection{AUTOSAR E2E Profile 2}
+
+CANgaroo includes built-in support for computing AUTOSAR End-to-End Protection
+Profile~2 checksums (CRC-8H2F, polynomial 0x2F).
+
+The protected header occupies the first two bytes of the frame:
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{0.7\textwidth}{llX}
+    \toprule
+    \textbf{Byte} & \textbf{Bits} & \textbf{Content} \\
+    \midrule
+    0 & 7:0 & CRC-8H2F checksum \\
+    1 & 3:0 & Counter (0–14) \\
+    1 & 7:4 & Reserved (zero) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{lstlisting}[language=Python, caption={One-shot protect and send}]
+DATA_ID = 0x1234
+counter = 0
+
+msg = cangaroo.encode("EngineData", {"EngineSpeed": 3500.0})
+cangaroo.e2e_p2_protect(msg, data_id=DATA_ID, counter=counter)
+cangaroo.send(msg)
+\end{lstlisting}
+
+\texttt{e2e\_p2\_protect()} writes the counter nibble into byte~1 and the computed
+CRC into byte~0 in-place. The counter should be incremented (modulo~15) with each
+transmission.
+
+\begin{lstlisting}[language=Python, caption={Manual CRC placement}]
+msg.set_byte(1, counter & 0x0F)                          # write counter first
+crc = cangaroo.e2e_p2_compute_crc(msg, data_id=DATA_ID)  # compute CRC
+msg.set_byte(0, crc)                                     # place CRC
+cangaroo.send(msg)
+\end{lstlisting}
+
+\texttt{e2e\_p2\_compute\_crc()} reads byte~0 as \texttt{0x00} regardless of its
+current content and returns the CRC byte without modifying the message.
+
+% ── Complete example ──────────────────────────────────────────────────────────
+\subsubsection{Complete Script Example}
+
+The following script monitors the bus, decodes every received frame that has a
+DBC definition, and forwards an E2E-protected response.
+
+\begin{lstlisting}[language=Python, caption={Monitor, decode, and respond with E2E protection}]
+import cangaroo
+
+DATA_ID = 0x0042
+counter = 0
+
+cangaroo.set_filter(id=0x100, mask=0x7FF)   # listen only to ID 0x100
+
+while True:
+    msgs = cangaroo.receive(timeout=2.0)
+    if not msgs:
+        cangaroo.log_warning("timeout - no frames received")
+        continue
+
+    for msg in msgs:
+        result = cangaroo.decode(msg)
+        if result is None:
+            continue
+
+        speed = result["signals"].get("EngineSpeed", {}).get("value")
+        if speed is None:
+            continue
+
+        cangaroo.log(f"EngineSpeed = {speed} rpm")
+
+        # Build and send a response with E2E protection
+        resp = cangaroo.encode("StatusReply", {"Speed": speed, "Status": 1.0})
+        cangaroo.e2e_p2_protect(resp, data_id=DATA_ID, counter=counter)
+        cangaroo.send(resp)
+        counter = (counter + 1) % 15       # counter wraps at 15
+\end{lstlisting}
+
+\subsection{Replay View}
+\label{sec:replay}
+
+The Replay View loads a previously saved trace file and replays it through the
+active hardware interfaces (or the virtual loopback).
+
+\subsubsection{Supported Input Formats}
+
+\begin{itemize}
+  \item candump log (\file{.log})
+  \item Vector ASC (\file{.asc})
+  \item PCAP (\file{.pcap})
+  \item PCAP-NG (\file{.pcapng})
+\end{itemize}
+
+\subsubsection{Playback Controls}
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Play / Pause / Stop] Standard transport controls.
+  \item[Seek slider] Drag to jump to any position in the file. The current
+        timestamp is shown next to the slider.
+  \item[Speed multiplier] Increase playback speed (e.g.\ 2× replays at twice
+        the original rate). Values less than 1× slow down playback.
+  \item[Loop] When checked, the file restarts automatically after the last frame.
+  \item[Auto-play] When checked, playback begins immediately after a file is loaded.
+\end{description}
+
+\subsubsection{Message Filter}
+
+A tree on the left side of the view lists all interfaces and directions (TX/RX)
+found in the file. Uncheck any entry to suppress those frames during replay.
+\ui{Select All} and \ui{Deselect All} buttons allow bulk toggling.
+
+\subsubsection{Channel Mapping}
+
+When the replay file was recorded on different interface names than those currently
+active, use the channel mapping table to redirect each recorded channel to an
+available hardware channel.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Database Support}
+
+\subsection{DBC Files (CAN)}
+
+DBC (\textit{Database CAN}) is the standard format used by Vector tools to describe
+CAN networks. CANgaroo's built-in parser supports:
+
+\begin{itemize}
+  \item Message definitions (ID, DLC, transmitting node)
+  \item Signal definitions (bit position, length, byte order, value type)
+  \item Signal scaling (factor, offset, min, max, unit)
+  \item Value descriptions (enumeration labels)
+  \item Multiplexed signals with multiplexer indicator
+  \item Node definitions
+  \item Message and signal attributes
+\end{itemize}
+
+\subsection{LDF Files (LIN)}
+
+LDF (\textit{LIN Description File}) describes LIN bus networks. The parser supports:
+
+\begin{itemize}
+  \item Frame definitions and their signals
+  \item Signal bit positions and lengths
+  \item Schedule tables
+  \item Node definitions (master, slaves)
+  \item LIN enhanced checksum calculation for correct ASC export
+\end{itemize}
+
+\subsection{Loading Databases}
+
+Databases are loaded per network in the Setup Dialog (Section~\ref{sec:setup}).
+Once loaded, their message and signal definitions are available in all views:
+
+\begin{itemize}
+  \item Trace View shows the decoded message name next to the ID.
+  \item Graph View populates the signal tree.
+  \item Raw TX View and TX Generator View enable signal-based frame editing.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Protocol Decoders}
+
+\subsection{UDS / ISO-TP Decoder}
+
+The UDS decoder reassembles multi-frame ISO-TP (ISO 15765-2) messages and
+interprets the payload as UDS (ISO 14229) services.
+
+\begin{itemize}
+  \item Supports single frames, first frames, consecutive frames, and flow control.
+  \item Interprets service identifiers (e.g.\ 0x22 ReadDataByIdentifier,
+        0x2E WriteDataByIdentifier, 0x27 SecurityAccess).
+  \item Decodes Negative Response Codes (NRC) for service 0x7F.
+  \item Reassembled messages appear in the \ui{UDS} category tab of the Trace View.
+\end{itemize}
+
+\subsection{J1939 Decoder}
+
+The J1939 decoder handles the higher-layer protocol used in commercial vehicles.
+
+\begin{itemize}
+  \item Extracts PGN, Source Address (SA), and Destination Address (DA) from
+        29-bit extended CAN IDs.
+  \item Reassembles multi-packet messages using the Transport Protocol:
+    \begin{itemize}
+      \item BAM (Broadcast Announce Message) sessions
+      \item CM (Connection Management) point-to-point sessions
+    \end{itemize}
+  \item Reassembled messages appear in the \ui{J1939} category tab of the Trace View.
+\end{itemize}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Saving and Exporting Traces}
+
+\subsection{Saving During Measurement}
+
+Use \menu{Trace \textrightarrow{} Save Trace to File} to write all currently buffered
+messages to a file. A format selection dialog lets you choose the output format.
+
+\subsection{Supported Export Formats}
+
+\begin{longtable}{p{3cm} p{2.5cm} p{7.5cm}}
+  \toprule
+  \textbf{Format} & \textbf{Extension} & \textbf{Notes} \\
+  \midrule
+  \endhead
+  candump log     & \file{.log}     & Plain-text format compatible with the Linux
+                                      \texttt{can-utils} \texttt{candump} tool.
+                                      Supports CAN-FD (\texttt{\#\#flag}) and
+                                      RTR (\texttt{\#Rn}) notation. \\[0.4em]
+  Vector ASC      & \file{.asc}     & Standard automotive logging format.
+                                      Compatible with Vector CANalyzer/CANoe and
+                                      other tools. Includes date/time header and
+                                      LIN enhanced checksum. \\[0.4em]
+  MDF4            & \file{.mdf}     & Binary MDF4 format with structured record
+                                      layout. Supports up to 64-byte CAN-FD payloads.
+                                      Compatible with analysis tools that read MDF4. \\[0.4em]
+  PCAP            & \file{.pcap}    & Wireshark-compatible packet capture format. \\[0.4em]
+  PCAP-NG         & \file{.pcapng}  & Extended PCAP-NG with per-interface metadata
+                                      blocks. Modern Wireshark format. \\
+  \bottomrule
+\end{longtable}
+
+\subsection{Full Trace Export and Import}
+
+\menu{Trace \textrightarrow{} Export Full Trace} and \menu{Trace \textrightarrow{} Import Full Trace}
+allow saving and restoring the entire in-memory trace buffer, including messages
+that have scrolled off the view.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Conditional Logging}
+
+The Conditional Logging feature writes frames to a file only when a user-defined
+signal condition is met.
+
+\begin{enumerate}
+  \item Open \menu{Measurement \textrightarrow{} Conditional Logging}.
+  \item Specify an output file path.
+  \item Add one or more conditions using the signal tree browser:
+    \begin{itemize}
+      \item Select a signal from a loaded DBC database.
+      \item Choose a comparison operator (\texttt{==}, \texttt{!=}, \texttt{<},
+            \texttt{>}, \texttt{<=}, \texttt{>=}).
+      \item Enter the threshold value.
+    \end{itemize}
+  \item Select whether multiple conditions must \textit{all} be true (\ui{AND})
+        or \textit{any one} must be true (\ui{OR}).
+  \item Enable logging with the \ui{Enable} checkbox.
+\end{enumerate}
+
+When the condition evaluates to true, the current frame is appended to the output
+file in the selected format.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Application Settings}
+
+Open \menu{File \textrightarrow{} Settings} (\key{Ctrl+Alt+S}) to adjust
+application-wide preferences.
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Setting} & \textbf{Description} \\
+    \midrule
+    Theme            & Switch between \ui{Light} and \ui{Dark} visual themes \\
+    Language         & Select the UI language (restart may be required) \\
+    Restore Windows  & Restore dock layout and window geometry on next launch \\
+    Clear on Start   & Automatically clear the trace when a measurement starts \\
+    Font Size        & Adjust the application-wide font point size \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Keyboard Shortcuts Reference}
+
+\begin{longtable}{p{4.5cm} p{8.5cm}}
+  \toprule
+  \textbf{Shortcut} & \textbf{Action} \\
+  \midrule
+  \endhead
+  \key{F5}               & Start Measurement \\
+  \key{Shift+F5}         & Stop Measurement \\
+  \key{Ctrl+N}           & New Workspace \\
+  \key{Ctrl+O}           & Open Workspace \\
+  \key{Ctrl+S}           & Save Workspace \\
+  \key{Ctrl+Shift+S}     & Save Workspace As \\
+  \key{Ctrl+Alt+S}       & Setup Interface / Settings \\
+  \key{Ctrl+Shift+T}     & New Trace View \\
+  \key{Ctrl+Shift+L}     & New Log View \\
+  \key{Ctrl+Shift+G}     & New Graph View \\
+  \key{Ctrl+Shift+B}     & New Standalone Graph Window \\
+  \key{Esc}              & Clear Trace \\
+  \key{Alt+F4}           & Exit Application \\
+  \bottomrule
+\end{longtable}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Typical Workflows}
+
+\subsection{Monitor a CAN Bus}
+
+\begin{enumerate}
+  \item Connect your CAN adapter.
+  \item Configure the interface in \menu{Measurement \textrightarrow{} Setup Interface}.
+  \item Optionally load a DBC file for the target network.
+  \item Press \key{F5} to start.
+  \item The Trace View immediately shows incoming frames. Switch to
+        \ui{Aggregated} mode to see only the latest value of each ID,
+        or \ui{Unified} mode for the full chronological log.
+\end{enumerate}
+
+\subsection{Analyze Signals with the Graph View}
+
+\begin{enumerate}
+  \item Complete the steps above with a DBC database loaded.
+  \item Open a Graph View (\key{Ctrl+Shift+G}).
+  \item In the signal tree, search for the signal of interest.
+  \item Double-click it to add a Time Series plot.
+  \item Adjust the time window and zoom to inspect the waveform.
+\end{enumerate}
+
+\subsection{Transmit Cyclic Messages}
+
+\begin{enumerate}
+  \item Open a TX Generator View (\menu{Window \textrightarrow{} New \textrightarrow{} Generator View}).
+  \item Click \ui{Add from Database} and select the message to transmit.
+  \item Set the desired interval (ms) and edit the payload if needed.
+  \item Enable the message and click \ui{Run All}.
+\end{enumerate}
+
+\subsection{Replay a Saved Log File}
+
+\begin{enumerate}
+  \item Open a Replay View (\menu{Window \textrightarrow{} New \textrightarrow{} Replay View}).
+  \item Click the folder icon or \ui{Open File} and select your log file.
+  \item Optionally adjust the speed multiplier and filter the channels.
+  \item Click \ui{Play}.
+\end{enumerate}
+
+\subsection{Automate with Python}
+
+\begin{enumerate}
+  \item Open a Script View (\menu{Window \textrightarrow{} New \textrightarrow{} Script View}).
+  \item Write or load your Python script.
+  \item Press \ui{Run}. The console pane shows output and any errors.
+  \item Enable \ui{Auto-run} to have the script start automatically with each
+        measurement.
+\end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Troubleshooting}
+
+\begin{description}[leftmargin=2em, style=nextline]
+
+  \item[Interface not appearing in Setup Dialog]
+    Click \menu{Measurement \textrightarrow{} Reload Interfaces}. On Linux,
+    ensure the CAN interface is up (\texttt{ip link set can0 up type can bitrate 500000}).
+    Check the Log View for driver error messages.
+
+  \item[No messages received]
+    Verify the bitrate matches the network. On Linux, confirm the interface state
+    with \texttt{ip -details link show can0}. Check the CAN Status View for
+    bus-off or error-passive conditions.
+
+  \item[DBC signals not decoded]
+    Confirm the DBC file is loaded in the Setup Dialog for the correct network.
+    Ensure the message ID in the DBC matches the ID on the bus (standard vs.\
+    extended frame type).
+
+  \item[Graph View shows no signals]
+    A DBC database must be loaded and the measurement must be running. The signal
+    tree is populated from the database; values appear only when matching frames
+    arrive.
+
+  \item[Python script does not start]
+    Verify Python 3 is installed and on the system \texttt{PATH}. Check the
+    console pane for import errors or syntax exceptions.
+
+  \item[Replay file not loading]
+    Ensure the file extension matches one of the supported formats (\file{.log},
+    \file{.asc}, \file{.pcap}, \file{.pcapng}). Check the Log View for parsing
+    error messages.
+
+  \item[Application crashes on start]
+    Delete the workspace XML file and restart. If the crash persists, launch from
+    a terminal to capture the error output.
+
+\end{description}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{License and Contributing}
+
+CANgaroo is released under the \textbf{GNU General Public License v2.0}.
+You are free to use, modify, and distribute it under the terms of that license.
+
+The source code is hosted on GitHub:
+\url{https://github.com/Schildkroet/CANgaroo}
+
+Bug reports and feature requests are welcome via the GitHub issue tracker.
+Pull requests should follow these coding conventions:
+
+\begin{itemize}
+  \item Modern C++20, Qt6 API only
+  \item Allman brace style
+  \item \texttt{override} instead of \texttt{Q\_DECL\_OVERRIDE}
+  \item Scoped enums (\texttt{enum class})
+  \item Smart pointers over raw owning pointers
+\end{itemize}
+
+% ──────────────────────────────────────────────────────────────────────────────
+\vfill
+\begin{center}
+  \textcolor{canblue}{\rule{0.5\textwidth}{0.5pt}}\\[0.5em]
+  {\small CANgaroo User Manual \quad|\quad \today}
+\end{center}
+
+\end{document}

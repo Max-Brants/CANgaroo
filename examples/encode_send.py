@@ -68,3 +68,38 @@ print(f"  OutsideTemp={cangaroo.signal_value(ambient_msg, 'OutsideTemp')} degC"
       f"  Humidity={cangaroo.signal_value(ambient_msg, 'Humidity')} %")
 
 print("\nDone.")
+
+# ── AUTOSAR E2E Profile 2 ──────────────────────────────────────────────────────
+# e2e_p2_protect(msg, data_id, counter)
+#   Writes the counter nibble into byte 1 and the CRC-8H2F into byte 0 in-place.
+#
+# e2e_p2_compute_crc(msg, data_id) -> int
+#   Returns the CRC byte only; useful when you need to inspect or place it manually.
+#
+# Message layout after protect():
+#   Byte 0: CRC (all 8 bits)
+#   Byte 1: bits 7:4 = reserved (0), bits 3:0 = counter (0–14)
+#   Byte 2+: payload
+
+DATA_ID = 0x1234
+counter = 0
+
+# Build the message from DBC signals (bytes 0 and 1 are reserved for E2E header)
+e2e_msg = cangaroo.encode("EngineData", {
+    "EngineSpeed": 3500.0,
+    "EngineTemp":  90.0,
+})
+
+# One-shot: write counter + CRC and send
+cangaroo.e2e_p2_protect(e2e_msg, data_id=DATA_ID, counter=counter)
+cangaroo.send(e2e_msg, interface_id=INTERFACE_ID)
+print(f"Sent E2E-protected EngineData: CRC=0x{e2e_msg.get_byte(0):02X}  "
+      f"counter nibble=0x{e2e_msg.get_byte(1):02X}  {e2e_msg}")
+
+# Fine-grained: compute CRC manually and place it yourself
+e2e_msg2 = cangaroo.encode("EngineData", {"EngineSpeed": 1000.0, "EngineTemp": 25.0})
+e2e_msg2.set_byte(1, counter & 0x0F)                                   # write counter nibble first
+crc = cangaroo.e2e_p2_compute_crc(e2e_msg2, data_id=DATA_ID)           # compute CRC
+cangaroo.log(f"E2E P2 CRC: 0x{crc:02X}")
+e2e_msg2.set_byte(0, crc)                                              # place CRC
+cangaroo.send(e2e_msg2, interface_id=INTERFACE_ID)

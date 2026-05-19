@@ -9,6 +9,7 @@
 #include <cstring>
 
 #include "core/portable_endian.h"
+#include "core/AutosarE2E.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -777,6 +778,26 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         result["signals"] = sigDict;
         return result;
     }, py::arg("msg"));
+
+    m.def("e2e_p2_compute_crc",
+        [](const BusMessage &msg, uint16_t dataID) -> uint8_t
+        {
+            return e2e_p2_compute_crc(msg, dataID);
+        },
+        py::arg("msg"), py::arg("data_id"),
+        "Compute AUTOSAR E2E Profile 2 CRC-8H2F over msg. "
+        "Byte 0 is treated as 0x00; byte 1 must already hold the counter nibble. "
+        "Returns the CRC byte without modifying the message.");
+
+    m.def("e2e_p2_protect",
+        [](BusMessage &msg, uint16_t dataID, uint8_t counter)
+        {
+            msg.setByte(1, counter & 0x0Fu);
+            msg.setByte(0, e2e_p2_compute_crc(msg, dataID));
+        },
+        py::arg("msg"), py::arg("data_id"), py::arg("counter"),
+        "Write AUTOSAR E2E Profile 2 header into msg in-place: "
+        "sets counter nibble in byte 1, then computes and writes CRC into byte 0.");
 }
 
 
