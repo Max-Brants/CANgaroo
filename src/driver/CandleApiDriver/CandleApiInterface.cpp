@@ -636,8 +636,27 @@ bool CandleApiInterface::readMessage(QList<BusMessage> &msglist, unsigned int ti
     BusMessage msg;
     msg.setInterfaceId(getId());
     msg.setId(candle_fd_frame_id(&frame));
-    msg.setErrorFrame(frameType == CANDLE_FRAMETYPE_ERROR);
     msg.setExtended(candle_fd_frame_is_extended_id(&frame));
+
+    if (frameType == CANDLE_FRAMETYPE_ERROR) {
+        const uint32_t errId = candle_fd_frame_id(&frame);
+        const uint8_t *d = candle_fd_frame_data(&frame);
+        if (errId & 0x00000001) msg.setErrorFlag(BusError::TxTimeout);
+        if (errId & 0x00000020) msg.setErrorFlag(BusError::Ack);
+        if (errId & 0x00000040) msg.setErrorFlag(BusError::BusOff);
+        if (errId & 0x00000004) {
+            if (d[1] & 0x03) msg.setErrorFlag(BusError::Overrun);
+        }
+        if (errId & 0x00000008) {
+            const uint8_t prot = d[2];
+            if (prot & 0x01) msg.setErrorFlag(BusError::Bit);
+            if (prot & 0x02) msg.setErrorFlag(BusError::Form);
+            if (prot & 0x04) msg.setErrorFlag(BusError::Stuff);
+            if (prot & 0x18) msg.setErrorFlag(BusError::Bit);
+        }
+        if (errId & 0x00000080) msg.setErrorFlag(BusError::Generic);
+        if (!msg.isErrorFrame()) msg.setErrorFlag(BusError::Generic);
+    }
     msg.setRTR(candle_fd_frame_is_rtr(&frame));
 
     const bool isFd = candle_fd_frame_is_fd(&frame);

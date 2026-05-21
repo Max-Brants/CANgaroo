@@ -25,6 +25,8 @@
 #include "BusMessage.h"
 #include "core/portable_endian.h"
 
+#include <QStringList>
+
 enum {
     id_flag_extended = 0x80000000,
     id_flag_rtr      = 0x40000000,
@@ -34,12 +36,12 @@ enum {
 };
 
 BusMessage::BusMessage()
-    : _raw_id(0), _dlc(0), _flags(0), _isFD(false), _isBRS(false), _isRX(true), _isShow(true), _busType(BusType::CAN), _interface(0), _u8()
+    : _raw_id(0), _dlc(0), _flags(0), _errorFlags{}, _isFD(false), _isBRS(false), _isRX(true), _isShow(true), _busType(BusType::CAN), _interface(0), _u8()
 {
 }
 
 BusMessage::BusMessage(uint32_t can_id)
-    : _raw_id(0), _dlc(0), _flags(0), _isFD(false), _isBRS(false), _isRX(true), _isShow(true), _busType(BusType::CAN), _interface(0), _u8()
+    : _raw_id(0), _dlc(0), _flags(0), _errorFlags{}, _isFD(false), _isBRS(false), _isRX(true), _isShow(true), _busType(BusType::CAN), _interface(0), _u8()
 {
     setId(can_id);
 }
@@ -115,16 +117,21 @@ void BusMessage::setBRS(const bool isBRS) {
 }
 
 bool BusMessage::isErrorFrame() const {
-    return (_raw_id & id_flag_error) != 0;
+    return _errorFlags != 0;
 }
 
-void BusMessage::setErrorFrame(const bool isErrorFrame) {
-    if (isErrorFrame) {
-        _raw_id |= id_flag_error;
-    } else {
-        _raw_id &= ~id_flag_error;
-    }
+void BusMessage::setErrorFrame(bool isErrorFrame) {
+    if (isErrorFrame)
+        _errorFlags |= BusError::Generic;
+    else
+        _errorFlags = {};
 }
+
+BusErrors BusMessage::errorFlags() const { return _errorFlags; }
+
+void BusMessage::setErrorFlag(BusError flag) { _errorFlags |= flag; }
+void BusMessage::clearErrorFlag(BusError flag) { _errorFlags &= ~BusErrors(flag); }
+void BusMessage::setErrorFlags(BusErrors flags) { _errorFlags = flags; }
 
 BusInterfaceId BusMessage::getInterfaceId() const
 {
@@ -408,7 +415,7 @@ QString BusMessage::getDataHexString() const
         return QString();
 
     if(isErrorFrame())
-        return QStringLiteral("ERROR");
+        return getErrorFlagsString();
 
     static const char hex[] = "0123456789ABCDEF";
     int len = getLength();
@@ -423,4 +430,26 @@ QString BusMessage::getDataHexString() const
     }
 
     return outstr;
+}
+
+QString BusMessage::getErrorFlagsString() const
+{
+    static const struct { BusError flag; const char *name; } kNames[] = {
+        { BusError::Ack,      "ACK"     },
+        { BusError::Bit,      "BIT"     },
+        { BusError::Stuff,    "STUFF"   },
+        { BusError::Crc,      "CRC"     },
+        { BusError::Form,     "FORM"    },
+        { BusError::BusOff,   "BUSOFF"  },
+        { BusError::Overrun,  "OVERRUN" },
+        { BusError::TxTimeout,"TIMEOUT" },
+        { BusError::Generic,  "ERROR"   },
+    };
+    QStringList parts;
+    for (const auto &e : kNames)
+        if (_errorFlags.testFlag(e.flag))
+            parts.append(QLatin1String(e.name));
+    if (parts.isEmpty())
+        return QStringLiteral("ERROR");
+    return QStringLiteral("ERROR: ") + parts.join(QLatin1Char('+'));
 }

@@ -38,6 +38,15 @@
 #define CAN_FLAGS_BRS           0x08 // Bit Rate Switch (CAN-FD only)
 #define CAN_FLAGS_TX            0x80 // Frame originated from the host (TX echo)
 
+// CAN error flag bits — reported in Protocol_CanFrame_t::ErrFlags
+static constexpr uint8_t GrIP_ERR_STUFF    = 0x01;
+static constexpr uint8_t GrIP_ERR_FORM     = 0x02;
+static constexpr uint8_t GrIP_ERR_ACK      = 0x04;
+static constexpr uint8_t GrIP_ERR_BIT_REC  = 0x08;
+static constexpr uint8_t GrIP_ERR_BIT_DOM  = 0x10;
+static constexpr uint8_t GrIP_ERR_CRC      = 0x20;
+static constexpr uint8_t GrIP_ERR_SW_SET   = 0x40;
+
 
 #define GRIP_HEADER_VERSION     1
 
@@ -910,8 +919,12 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
             if (frame.ErrFlags)
             {
                 qDebug() << "CAN error flags:" << frame.ErrFlags;
-                msg.setErrorFrame(true);
-                msg.setFlags(frame.ErrFlags);
+                if (frame.ErrFlags & GrIP_ERR_STUFF)                  msg.setErrorFlag(BusError::Stuff);
+                if (frame.ErrFlags & GrIP_ERR_FORM)                   msg.setErrorFlag(BusError::Form);
+                if (frame.ErrFlags & GrIP_ERR_ACK)                    msg.setErrorFlag(BusError::Ack);
+                if (frame.ErrFlags & (GrIP_ERR_BIT_REC | GrIP_ERR_BIT_DOM)) msg.setErrorFlag(BusError::Bit);
+                if (frame.ErrFlags & GrIP_ERR_CRC)                    msg.setErrorFlag(BusError::Crc);
+                if (frame.ErrFlags & GrIP_ERR_SW_SET)                 msg.setErrorFlag(BusError::Generic);
             }
 
             for (int i = 0; i < frame.DLC; i++)
@@ -1007,8 +1020,13 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
                 entry.msg.setRX(false);
                 if (frame.Header.Data != 0)
                 {
-                    entry.msg.setErrorFrame(true);
-                    entry.msg.setFlags(frame.Header.Data);
+                    const uint8_t ef = frame.Header.Data;
+                    if (ef & GrIP_ERR_STUFF)                   entry.msg.setErrorFlag(BusError::Stuff);
+                    if (ef & GrIP_ERR_FORM)                    entry.msg.setErrorFlag(BusError::Form);
+                    if (ef & GrIP_ERR_ACK)                     entry.msg.setErrorFlag(BusError::Ack);
+                    if (ef & (GrIP_ERR_BIT_REC | GrIP_ERR_BIT_DOM)) entry.msg.setErrorFlag(BusError::Bit);
+                    if (ef & GrIP_ERR_CRC)                     entry.msg.setErrorFlag(BusError::Crc);
+                    if (ef & GrIP_ERR_SW_SET)                  entry.msg.setErrorFlag(BusError::Generic);
                 }
 
                 if (entry.ch < m_ReceiveQueue.size())

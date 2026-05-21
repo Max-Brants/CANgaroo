@@ -26,6 +26,7 @@
 
 #include <QString>
 #include <QDateTime>
+#include <QFlags>
 
 #include "driver/CanDriver.h"
 
@@ -34,6 +35,21 @@ enum class BusType : uint8_t
     CAN = 0,
     LIN = 1,
 };
+
+enum class BusError : uint32_t
+{
+    Ack       = 0x0001,
+    Bit       = 0x0002,
+    Stuff     = 0x0004,
+    Crc       = 0x0008,
+    Form      = 0x0010,
+    BusOff    = 0x0020,
+    Overrun   = 0x0040,
+    TxTimeout = 0x0080,
+    Generic   = 0x8000,
+};
+Q_DECLARE_FLAGS(BusErrors, BusError)
+Q_DECLARE_OPERATORS_FOR_FLAGS(BusErrors)
 
 class BusMessage
 {
@@ -67,7 +83,12 @@ public:
     void setBRS(const bool isBRS);
 
     [[nodiscard]] bool isErrorFrame() const;
-    void setErrorFrame(const bool isErrorFrame);
+    void setErrorFrame(bool isErrorFrame);
+
+    [[nodiscard]] BusErrors errorFlags() const;
+    void setErrorFlag(BusError flag);
+    void clearErrorFlag(BusError flag);
+    void setErrorFlags(BusErrors flags);
 
     [[nodiscard]] BusInterfaceId getInterfaceId() const;
     void setInterfaceId(BusInterfaceId id);
@@ -114,11 +135,13 @@ public:
 
     [[nodiscard]] QString getIdString() const;
     [[nodiscard]] QString getDataHexString() const;
+    [[nodiscard]] QString getErrorFlagsString() const;
 
 private:
     uint32_t _raw_id;
     uint8_t _dlc;
     uint8_t _flags;
+    BusErrors _errorFlags;
     bool _isFD;
     bool _isBRS;
     bool _isRX;

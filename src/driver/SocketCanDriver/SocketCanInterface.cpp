@@ -816,8 +816,26 @@ bool SocketCanInterface::readMessage(QList<BusMessage> &msglist, unsigned int ti
         msg.setId(frame.can_id & CAN_EFF_MASK);
         msg.setExtended((frame.can_id & CAN_EFF_FLAG) != 0);
         msg.setRTR((frame.can_id & CAN_RTR_FLAG) != 0);
-        msg.setErrorFrame((frame.can_id & CAN_ERR_FLAG) != 0);
         msg.setInterfaceId(getId());
+
+        if (frame.can_id & CAN_ERR_FLAG) {
+            const uint32_t errId = frame.can_id & ~static_cast<uint32_t>(CAN_ERR_FLAG);
+            if (errId & 0x00000001) msg.setErrorFlag(BusError::TxTimeout);
+            if (errId & 0x00000020) msg.setErrorFlag(BusError::Ack);
+            if (errId & 0x00000040) msg.setErrorFlag(BusError::BusOff);
+            if (errId & 0x00000004) {
+                if (frame.data[1] & 0x03) msg.setErrorFlag(BusError::Overrun);
+            }
+            if (errId & 0x00000008) {
+                const uint8_t prot = static_cast<uint8_t>(frame.data[2]);
+                if (prot & 0x01) msg.setErrorFlag(BusError::Bit);
+                if (prot & 0x02) msg.setErrorFlag(BusError::Form);
+                if (prot & 0x04) msg.setErrorFlag(BusError::Stuff);
+                if (prot & 0x18) msg.setErrorFlag(BusError::Bit);
+            }
+            if (errId & 0x00000080) msg.setErrorFlag(BusError::Generic);
+            if (!msg.isErrorFrame()) msg.setErrorFlag(BusError::Generic);
+        }
 
         bool isFD = (nbytes == CANFD_MTU);
         msg.setFD(isFD);
