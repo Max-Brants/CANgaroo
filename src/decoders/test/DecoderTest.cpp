@@ -63,9 +63,9 @@ void testJ1939SingleFrame() {
     ProtocolMessage out;
     DecodeStatus result = decoder.tryDecode(msg, out);
     assert(result == DecodeStatus::Completed);
-    assert(out.name == "PGN: 0xFF17");
+    assert(out.name == "Engine Fluid Level/Pressure");
     assert(out.protocol == "J1939");
-    assert(out.id == 65263);
+    assert(out.id == 0xFEEF);
     assert(out.type == MessageType::Request);
     std::cout << "testJ1939SingleFrame passed" << std::endl;
 }
