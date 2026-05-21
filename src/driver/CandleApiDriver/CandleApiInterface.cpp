@@ -602,7 +602,9 @@ void CandleApiInterface::sendMessage(const BusMessage &msg)
         uint64_t ts_us = 0;
         if (!candle_dev_get_timestamp_us(_sharedDev->handle, &t_dev)
                 || !_sharedDev->deviceTimestampToHostUs(t_dev, ts_us)) {
-            ts_us = static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
+            // 0 is a sentinel: readMessage() will assign a timestamp from the
+            // next RX frame so TX stays on the same device-clock time base.
+            ts_us = 0;
         }
         txMsg.setTimestamp_us(static_cast<int64_t>(ts_us));
         QMutexLocker lock(&_txMutex);
@@ -671,11 +673,27 @@ bool CandleApiInterface::readMessage(QList<BusMessage> &msglist, unsigned int ti
         msg.setByte(i, data[i]);
     }
 
-    const uint64_t ts_us = queuedFrame.timestampValid
-            ? queuedFrame.timestampUs
-            : static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch()) * 1000ULL;
-    msg.setTimestamp_us(static_cast<int64_t>(ts_us));
+    const int64_t rxTs_us = queuedFrame.timestampValid
+            ? static_cast<int64_t>(queuedFrame.timestampUs)
+            : static_cast<int64_t>(QDateTime::currentMSecsSinceEpoch()) * 1000LL;
+    msg.setTimestamp_us(rxTs_us);
+
+    // Any TX message that couldn't get a device-clock timestamp (sentinel 0)
+    // is pinned to just before this RX frame so it stays on the same time base.
+    for (auto &pending : msglist) {
+        if (!pending.isRX() && pending.getTimestamp_us() == 0) {
+            pending.setTimestamp_us(rxTs_us - 1);
+        }
+    }
+
     msglist.append(msg);
+
+    // Sort by timestamp: RX frames buffered before the TX was issued naturally
+    // carry earlier device timestamps and must appear first in the trace.
+    std::sort(msglist.begin(), msglist.end(), [](const BusMessage &a, const BusMessage &b) {
+        return a.getTimestamp_us() < b.getTimestamp_us();
+    });
+
     return true;
 }
 
