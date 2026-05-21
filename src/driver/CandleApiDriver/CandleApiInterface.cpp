@@ -594,11 +594,6 @@ void CandleApiInterface::sendMessage(const BusMessage &msg)
 
     if (ok) {
         _numTx++;
-        log_debug(QStringLiteral("%1 TX id=0x%2 dlc=%3 fd=%4")
-            .arg(getName())
-            .arg(msg.getId(), 0, 16)
-            .arg(msg.getLength())
-            .arg((_isFdEnabled && (msg.isFD() || msg.getLength() > 8)) ? 1 : 0));
 
         BusMessage txMsg = msg;
         txMsg.setFD(_isFdEnabled && (msg.isFD() || msg.getLength() > 8));
