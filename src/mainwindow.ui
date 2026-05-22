@@ -166,6 +166,8 @@
      </property>
      <addaction name="actionCANblaster"/>
      <addaction name="actionTinyCAN"/>
+     <addaction name="separator"/>
+     <addaction name="actionDownloadZsCanFdDlls"/>
     </widget>
     <addaction name="actionStart_Measurement"/>
     <addaction name="actionStop_Measurement"/>
@@ -366,6 +368,11 @@
    </property>
    <property name="text">
     <string>TinyCAN</string>
+   </property>
+  </action>
+  <action name="actionDownloadZsCanFdDlls">
+   <property name="text">
+    <string>Download ZsCanFd DLLs</string>
    </property>
   </action>
   <action name="actionSettings">

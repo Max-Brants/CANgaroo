@@ -160,4 +160,7 @@ private:
     void applyFontSize(int pointSize);
     QTranslator m_translator;
     QActionGroup *m_languageActionGroup = nullptr;
+
+    void checkZsCanFdDlls();
+    void downloadZsCanFdDlls();
 };

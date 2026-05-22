@@ -299,7 +299,7 @@ jobs:
 
       - name: Configure build (Qt6 qmake)
         run: |
-          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan
+          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan CONFIG+=zscanfd
 
       - name: Build
         run: |

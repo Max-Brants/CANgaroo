@@ -101,5 +101,14 @@ include($$PWD/driver/VectorDriver/VectorDriver.pri)
 # Requires the TinyCAN driver/library installed on the target machine at runtime.
 include($$PWD/driver/TinyCanDriver/TinyCanDriver.pri)
 
+# Pass CONFIG+=zscanfd to qmake to enable the ZsCanFd driver.
+# Requires the ZsCanFd.dll and custom qt_zscanfd canbus plugin on the target machine at runtime.
+# Download zscanfd.dll: "https://files-accl.zohoexternal.in/public/workdrive-external/download/vg4j6fe5343da544d4d78876807400716c283?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCwc-13uP6TI%22%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D"
+# Download qtzscanfdbus.dll: "https://files-accl.zohoexternal.in/public/workdrive-external/download/5twqz7da53b7da5804c958ca079ba061bd493?x-cli-msg=%7B%22linkId%22%3A%22BHvzgCTCw7-13uP6TI%22%2C%22isFileOwner%22%3Afalse%2C%22version%22%3A%221.0%22%2C%22isWDSupport%22%3Afalse%7D"
+win32:zscanfd {
+    DEFINES += ZSCANFD_DRIVER
+    include($$PWD/driver/ZsCanFdDriver/ZsCanFdDriver.pri)
+}
+
 DISTFILES += \
     assets/filter-symbolic.svg
