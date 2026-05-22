@@ -374,7 +374,7 @@ double BusMessage::getFloatTimestamp() const
 
 QDateTime BusMessage::getDateTime() const
 {
-    return QDateTime::fromMSecsSinceEpoch(_timestamp_us / 1000);
+    return QDateTime::fromMSecsSinceEpoch(_timestamp_us / 1000, Qt::LocalTime);
 }
 
 void BusMessage::setTimestamp_us(int64_t us)

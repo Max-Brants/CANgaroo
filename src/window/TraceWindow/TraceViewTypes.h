@@ -25,6 +25,7 @@ enum timestamp_mode_t {
     timestamp_mode_absolute,
     timestamp_mode_relative,
     timestamp_mode_delta,
+    timestamp_mode_absolute_utc,
     timestamp_modes_count
 };
 

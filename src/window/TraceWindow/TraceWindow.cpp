@@ -103,9 +103,10 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
     ui->cbViewMode->addItem(tr("Aggregated"), mode_aggregated);
     ui->cbViewMode->addItem(tr("Rolling Log"), mode_unified);
 
-    ui->cbTimestampMode->addItem(tr("Absolute"), 0);
-    ui->cbTimestampMode->addItem(tr("Relative"), 1);
-    ui->cbTimestampMode->addItem(tr("Delta"), 2);
+    ui->cbTimestampMode->addItem(tr("Absolute"), timestamp_mode_absolute);
+    ui->cbTimestampMode->addItem(tr("Absolute (UTC)"), timestamp_mode_absolute_utc);
+    ui->cbTimestampMode->addItem(tr("Relative"), timestamp_mode_relative);
+    ui->cbTimestampMode->addItem(tr("Delta"), timestamp_mode_delta);
     setTimestampMode(timestamp_mode_delta);
 
     connect(ui->filterLineEdit, &QLineEdit::textChanged, this, &TraceWindow::on_cbFilterChanged);

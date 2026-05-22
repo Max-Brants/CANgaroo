@@ -168,6 +168,10 @@ QVariant BaseTraceViewModel::formatTimestamp(timestamp_mode_t mode, const BusMes
 
         return currentMsg.getDateTime().toString("hh:mm:ss.zzz");
 
+    } else if (mode==timestamp_mode_absolute_utc) {
+
+        return QDateTime::fromMSecsSinceEpoch(currentMsg.getTimestamp_ms(), Qt::UTC).toString("hh:mm:ss.zzz");
+
     } else if (mode==timestamp_mode_relative) {
 
         double t_current = currentMsg.getFloatTimestamp();
