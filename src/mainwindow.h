@@ -72,6 +72,7 @@ public slots:
     QMainWindow *createTraceWindow(const QString &title = QString());
     QMainWindow *createGraphWindow(const QString &title = QString());
     void createStandaloneGraphWindow();
+    void createGatewayWindow();
     QDockWidget *addGraphWidget(QMainWindow *parent = nullptr);
     QDockWidget *addRawTxWidget(QMainWindow *parent = nullptr);
     QDockWidget *addLogWidget(QMainWindow *parent = nullptr);
@@ -148,6 +149,7 @@ private:
     int askSaveBecauseWorkspaceModified();
 
     QList<class GraphWindow*> _standaloneGraphWindows;
+    class GatewayWindow *_gatewayWindow{nullptr};
 
     // Recent files
     static constexpr int MaxRecentFiles = 8;
