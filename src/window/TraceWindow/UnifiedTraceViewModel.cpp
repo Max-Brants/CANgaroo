@@ -14,7 +14,7 @@ void UnifiedTraceViewModel::applyProtocolConfig()
 }
 
 UnifiedTraceViewModel::UnifiedTraceViewModel(Backend &backend, Category category)
-    : BaseTraceViewModel(backend), m_category(category)
+    : BaseTraceViewModel(backend), m_category(category), m_aggregating(category == Cat_J1939)
 {
     applyProtocolConfig();
     m_rootItem = std::make_shared<UnifiedTraceItem>(BusMessage()); // Dummy root
@@ -178,13 +178,28 @@ void UnifiedTraceViewModel::processNewMessages()
             if (m_category == Cat_All) {
                 shouldAppend = true;
             } else if (pmsg.protocol.compare("uds", Qt::CaseInsensitive) == 0 && m_category == Cat_UDS) {
-                shouldAppend = true;
+                if (m_aggregating) {
+                    uint64_t key = getUdsKey(pmsg);
+                    if (m_udsAggregatedMap.count(key)) {
+                        auto &item = m_udsAggregatedMap[key];
+                        item->updateProtocolMessage(pmsg);
+                        updatedRows.insert(item->row());
+                    } else {
+                        shouldAppend = true;
+                    }
+                } else {
+                    shouldAppend = true;
+                }
             } else if (pmsg.protocol.compare("j1939", Qt::CaseInsensitive) == 0 && m_category == Cat_J1939) {
-                uint32_t key = getJ1939Key(pmsg);
-                if (m_j1939AggregatedMap.count(key)) {
-                    auto &item = m_j1939AggregatedMap[key];
-                    item->updateProtocolMessage(pmsg);
-                    updatedRows.insert(item->row());
+                if (m_aggregating) {
+                    uint32_t key = getJ1939Key(pmsg);
+                    if (m_j1939AggregatedMap.count(key)) {
+                        auto &item = m_j1939AggregatedMap[key];
+                        item->updateProtocolMessage(pmsg);
+                        updatedRows.insert(item->row());
+                    } else {
+                        shouldAppend = true;
+                    }
                 } else {
                     shouldAppend = true;
                 }
@@ -202,8 +217,10 @@ void UnifiedTraceViewModel::processNewMessages()
 
                 newItems.append(item);
 
-                if (m_category == Cat_J1939) {
+                if (m_category == Cat_J1939 && m_aggregating) {
                     m_j1939AggregatedMap[getJ1939Key(pmsg)] = item;
+                } else if (m_category == Cat_UDS && m_aggregating) {
+                    m_udsAggregatedMap[getUdsKey(pmsg)] = item;
                 }
             }
         } else if (status == DecodeStatus::Ignored || status == DecodeStatus::Consumed) {
@@ -263,13 +280,20 @@ void UnifiedTraceViewModel::processNewMessages()
                 m_rootItem->child(i)->setRow(i);
             }
 
-            // Only rebuild J1939 map when relevant
-            if (m_category == Cat_J1939) {
+            if (m_category == Cat_J1939 && m_aggregating) {
                 m_j1939AggregatedMap.clear();
                 for (int i = 0; i < m_rootItem->childCount(); ++i) {
                     auto child = m_rootItem->child(i);
                     if (child && child->isProtocol() && child->protocolMessage().protocol.compare("j1939", Qt::CaseInsensitive) == 0) {
                         m_j1939AggregatedMap[getJ1939Key(child->protocolMessage())] = child;
+                    }
+                }
+            } else if (m_category == Cat_UDS && m_aggregating) {
+                m_udsAggregatedMap.clear();
+                for (int i = 0; i < m_rootItem->childCount(); ++i) {
+                    auto child = m_rootItem->child(i);
+                    if (child && child->isProtocol() && child->protocolMessage().protocol.compare("uds", Qt::CaseInsensitive) == 0) {
+                        m_udsAggregatedMap[getUdsKey(child->protocolMessage())] = child;
                     }
                 }
             }
@@ -306,6 +330,7 @@ void UnifiedTraceViewModel::afterClear()
     m_firstTimestamp = 0;
     m_previousRowTimestamp = 0;
     m_j1939AggregatedMap.clear();
+    m_udsAggregatedMap.clear();
     m_prevTimestampByKey.clear();
     m_prevMessageByKey.clear();
     endResetModel();
@@ -323,6 +348,7 @@ void UnifiedTraceViewModel::onSetupChanged()
     m_firstTimestamp = 0;
     m_previousRowTimestamp = 0;
     m_j1939AggregatedMap.clear();
+    m_udsAggregatedMap.clear();
     m_prevTimestampByKey.clear();
     m_prevMessageByKey.clear();
 
@@ -352,6 +378,12 @@ uint32_t UnifiedTraceViewModel::getJ1939Key(const ProtocolMessage& pmsg) const
     uint32_t pgn = pmsg.id;
     uint32_t sa = pmsg.metadata.value("Source Address").toUInt();
     return (pgn << 8) | (sa & 0xFF);
+}
+
+uint64_t UnifiedTraceViewModel::getUdsKey(const ProtocolMessage& pmsg) const
+{
+    uint32_t canId = pmsg.rawFrames.isEmpty() ? 0 : pmsg.rawFrames.first().getRawId();
+    return (static_cast<uint64_t>(canId) << 16) | (pmsg.id & 0xFFFF);
 }
 
 QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[maybe_unused]] int role) const

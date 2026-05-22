@@ -23,6 +23,7 @@ public:
     ~UnifiedTraceViewModel();
 
     void setCategory(Category category) { m_category = category; }
+    void setAggregating(bool aggregating) { m_aggregating = aggregating; }
 
     virtual QModelIndex index(int row, int column, const QModelIndex &parent = QModelIndex()) const override;
     virtual QModelIndex parent(const QModelIndex &child) const override;
@@ -59,8 +60,11 @@ private:
 
     QTimer m_processTimer;
 
+    bool m_aggregating;
     std::map<uint32_t, std::shared_ptr<UnifiedTraceItem>> m_j1939AggregatedMap;
+    std::map<uint64_t, std::shared_ptr<UnifiedTraceItem>> m_udsAggregatedMap;
     uint32_t getJ1939Key(const ProtocolMessage& pmsg) const;
+    uint64_t getUdsKey(const ProtocolMessage& pmsg) const;
 
     QHash<uint64_t, uint64_t>   m_prevTimestampByKey;
     QHash<uint64_t, BusMessage> m_prevMessageByKey;

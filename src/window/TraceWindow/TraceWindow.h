@@ -76,6 +76,7 @@ private slots:
 
     void on_cbTraceClearpushButton(void);
     void on_cbViewMode_currentIndexChanged(int index);
+    void on_tabs_currentChanged(int index);
     void openFilterDialog();
 
 private slots:
@@ -84,7 +85,6 @@ private slots:
 private:
     Ui::TraceWindow *ui;
     Backend *_backend;
-    mode_t _mode;
     timestamp_mode_t _timestampMode;
     QTimer _scrollTimer;
     bool _scrollPending[3] = {}; // One per Cat_Count
@@ -98,9 +98,12 @@ private:
 
     TraceFilterModel * _filterModels[Cat_Count];
     UnifiedTraceViewModel *_viewModels[Cat_Count];
+    UnifiedTraceViewModel *_altViewModels[Cat_Count];   // alternative mode per tab (null for monitor)
+    TraceFilterModel *_altFilterModels[Cat_Count];
+    mode_t _tabModes[Cat_Count];
     AggregatedTraceViewModel *_aggregatedTraceViewModel;
     QSortFilterProxyModel *_aggregatedProxyModel;
-    TraceFilterModel * _aggMonitorFilterModel; // Existing aggregated monitor mode
+    TraceFilterModel * _aggMonitorFilterModel;
 
     bool _filterShowTx = true;
     bool _filterShowRx = true;

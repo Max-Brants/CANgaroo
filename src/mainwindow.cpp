@@ -1181,11 +1181,11 @@ void MainWindow::checkZsCanFdDlls()
 
     QMessageBox msgBox(this);
     msgBox.setWindowTitle(tr("ZsCanFd DLLs not found"));
-    msgBox.setText(tr("The required ZsCanFd DLLs (zscanfd.dll, qtzscanfdbus.dll) "
-                      "were not found next to cangaroo.exe.\n\n"
+    msgBox.setText(tr("The required ZsCanFd DLLs (zilogic.com) "
+                      "were not found (Optional driver).\n\n"
                       "Would you like to download them now?"));
     msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-    msgBox.setDefaultButton(QMessageBox::Yes);
+    msgBox.setDefaultButton(QMessageBox::No);
 
     auto *dontAsk = new QCheckBox(tr("Don't ask again"), &msgBox);
     msgBox.setCheckBox(dontAsk);

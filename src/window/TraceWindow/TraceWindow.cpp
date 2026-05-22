@@ -43,7 +43,6 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
     ConfigurableWidget(parent),
     ui(new Ui::TraceWindow),
     _backend(&backend),
-    _mode(mode_unified),
     _timestampMode(timestamp_mode_absolute)
 {
     ui->setupUi(this);
@@ -99,7 +98,33 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
 
     connect(_aggMonitorFilterModel, &QAbstractItemModel::rowsInserted, this, &TraceWindow::onRowsInserted);
 
-    // Special handling for the first tab: Can show either Aggregated (Monitor) or Unified (All)
+    // Per-tab default modes
+    _tabModes[Cat_Aggregated] = mode_aggregated;
+    _tabModes[Cat_UDS]        = mode_unified;
+    _tabModes[Cat_J1939]      = mode_aggregated;
+
+    // Alt models: UDS aggregated, J1939 rolling (monitor tab has no alt model here)
+    _altViewModels[Cat_Aggregated] = nullptr;
+    _altFilterModels[Cat_Aggregated] = nullptr;
+
+    auto makeAltModel = [&](int i, UnifiedTraceViewModel::Category cat, bool aggregating) {
+        _altViewModels[i] = new UnifiedTraceViewModel(backend, cat);
+        _altViewModels[i]->setAggregating(aggregating);
+        _altViewModels[i]->setTimestampMode(_timestampMode);
+        _altFilterModels[i] = new TraceFilterModel(this);
+        _altFilterModels[i]->setSourceModel(_altViewModels[i]);
+
+        QTreeView *tree = trees[i];
+        tree->setItemDelegateForColumn(BaseTraceViewModel::column_data, tree->itemDelegateForColumn(BaseTraceViewModel::column_data)); // reuse existing delegate
+
+        connect(_altFilterModels[i], &QAbstractItemModel::rowsInserted, this, &TraceWindow::onRowsInserted);
+    };
+
+    makeAltModel(Cat_UDS,    UnifiedTraceViewModel::Cat_UDS,    true);   // UDS aggregated
+    makeAltModel(Cat_J1939,  UnifiedTraceViewModel::Cat_J1939,  false);  // J1939 rolling
+
+    connect(ui->tabs, &QTabWidget::currentChanged, this, &TraceWindow::on_tabs_currentChanged);
+
     ui->cbViewMode->addItem(tr("Aggregated"), mode_aggregated);
     ui->cbViewMode->addItem(tr("Rolling Log"), mode_unified);
 
@@ -128,6 +153,7 @@ TraceWindow::~TraceWindow()
     for (int i = 0; i < Cat_Count; ++i)
     {
         delete _viewModels[i];
+        delete _altViewModels[i];
     }
 }
 
@@ -138,18 +164,40 @@ void TraceWindow::retranslateUi()
 
 void TraceWindow::setMode(TraceWindow::mode_t mode)
 {
-    _mode = mode;
+    int tabIdx = ui->tabs->currentIndex();
+    _tabModes[tabIdx] = mode;
 
-    if (mode == mode_aggregated) {
-        ui->treeAgg->setModel(_aggMonitorFilterModel);
-        ui->treeAgg->setSortingEnabled(true);
-        ui->treeAgg->sortByColumn(BaseTraceViewModel::column_canid, Qt::AscendingOrder);
+    QTreeView *trees[] = { ui->treeAgg, ui->treeUds, ui->treeJ1939 };
+    QTreeView *tree = trees[tabIdx];
+
+    if (tabIdx == Cat_Aggregated) {
+        if (mode == mode_aggregated) {
+            tree->setModel(_aggMonitorFilterModel);
+            tree->setSortingEnabled(true);
+            tree->sortByColumn(BaseTraceViewModel::column_canid, Qt::AscendingOrder);
+        } else {
+            tree->setSortingEnabled(false);
+            tree->header()->setSortIndicator(-1, Qt::AscendingOrder);
+            _filterModels[Cat_Aggregated]->sort(-1);
+            tree->setModel(_filterModels[Cat_Aggregated]);
+            tree->setRootIsDecorated(true);
+        }
     } else {
-        ui->treeAgg->setSortingEnabled(false);
-        ui->treeAgg->header()->setSortIndicator(-1, Qt::AscendingOrder);
-        _filterModels[Cat_Aggregated]->sort(-1);
-        ui->treeAgg->setModel(_filterModels[Cat_Aggregated]);
-        ui->treeAgg->setRootIsDecorated(true);
+        // UDS and J1939: primary model = the original (rolling for UDS, aggregated for J1939)
+        // alt model = the new alternative (aggregated for UDS, rolling for J1939)
+        bool usePrimary = (tabIdx == Cat_UDS)   ? (mode == mode_unified)
+                        : (tabIdx == Cat_J1939) ? (mode == mode_aggregated)
+                        : true;
+        if (usePrimary) {
+            tree->setSortingEnabled(false);
+            tree->header()->setSortIndicator(-1, Qt::AscendingOrder);
+            _filterModels[tabIdx]->sort(-1);
+            tree->setModel(_filterModels[tabIdx]);
+        } else {
+            tree->setSortingEnabled(true);
+            tree->sortByColumn(BaseTraceViewModel::column_canid, Qt::AscendingOrder);
+            tree->setModel(_altFilterModels[tabIdx]);
+        }
     }
 
     for (int i = 0; i < ui->cbViewMode->count(); i++) {
@@ -158,7 +206,20 @@ void TraceWindow::setMode(TraceWindow::mode_t mode)
             break;
         }
     }
-    ui->treeAgg->scrollToBottom();
+    tree->scrollToBottom();
+}
+
+void TraceWindow::on_tabs_currentChanged(int index)
+{
+    (void) index;
+    int tabIdx = ui->tabs->currentIndex();
+    mode_t currentMode = _tabModes[tabIdx];
+    for (int i = 0; i < ui->cbViewMode->count(); i++) {
+        if (ui->cbViewMode->itemData(i).toInt() == currentMode) {
+            ui->cbViewMode->setCurrentIndex(i);
+            break;
+        }
+    }
 }
 
 
@@ -178,6 +239,8 @@ void TraceWindow::setTimestampMode(int mode)
     for (int i = 0; i < Cat_Count; ++i)
     {
         _viewModels[i]->setTimestampMode(new_mode);
+        if (_altViewModels[i])
+            _altViewModels[i]->setTimestampMode(new_mode);
     }
 
     if (new_mode != _timestampMode)
@@ -202,7 +265,9 @@ bool TraceWindow::saveXML(Backend &backend, QDomDocument &xml, QDomElement &root
     }
 
     root.setAttribute("type", "TraceWindow");
-    root.setAttribute("mode", _mode == mode_unified ? "unified" : "aggregated");
+    root.setAttribute("mode", _tabModes[Cat_Aggregated] == mode_unified ? "unified" : "aggregated");
+    root.setAttribute("modeUds", _tabModes[Cat_UDS] == mode_aggregated ? "aggregated" : "unified");
+    root.setAttribute("modeJ1939", _tabModes[Cat_J1939] == mode_unified ? "unified" : "aggregated");
     root.setAttribute("TimestampMode", _timestampMode);
     root.setAttribute("ActiveTab", ui->tabs->currentIndex());
 
@@ -256,8 +321,12 @@ bool TraceWindow::loadXML(Backend &backend, QDomElement &el)
         return false;
     }
 
-    QString modeStr = el.attribute("mode", "unified");
-    setMode(modeStr == "unified" ? mode_unified : mode_aggregated);
+    QString modeStr = el.attribute("mode", "aggregated");
+    _tabModes[Cat_Aggregated] = (modeStr == "unified") ? mode_unified : mode_aggregated;
+    _tabModes[Cat_UDS]  = (el.attribute("modeUds",   "unified")    == "aggregated") ? mode_aggregated : mode_unified;
+    _tabModes[Cat_J1939]= (el.attribute("modeJ1939", "aggregated") == "unified")    ? mode_unified    : mode_aggregated;
+    // Apply mode for Monitor tab (the tab that is currently visible after loading)
+    setMode(_tabModes[ui->tabs->currentIndex()]);
     setTimestampMode(el.attribute("TimestampMode", "0").toInt());
     ui->tabs->setCurrentIndex(el.attribute("ActiveTab", "0").toInt());
 
@@ -320,7 +389,10 @@ void TraceWindow::onRowsInserted(const QModelIndex &parent, int first, int last)
     TraceFilterModel *filterModel = qobject_cast<TraceFilterModel*>(sender());
 
     for (int i = 0; i < Cat_Count; ++i) {
-        if (_filterModels[i] == filterModel || (i == 0 && _aggMonitorFilterModel == filterModel)) {
+        if (_filterModels[i] == filterModel
+            || (i == 0 && _aggMonitorFilterModel == filterModel)
+            || (_altFilterModels[i] && _altFilterModels[i] == filterModel))
+        {
             _scrollPending[i] = true;
             break;
         }
@@ -411,6 +483,8 @@ void TraceWindow::applyDialogFilters()
     for (int i = 0; i < Cat_Count; ++i)
     {
         applyToModel(_filterModels[i]);
+        if (_altFilterModels[i])
+            applyToModel(_altFilterModels[i]);
     }
     applyToModel(_aggMonitorFilterModel);
 }
