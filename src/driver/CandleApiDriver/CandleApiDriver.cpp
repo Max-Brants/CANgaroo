@@ -30,11 +30,6 @@
 #include <cwctype>
 #include <QString>
 
-static void candleApiLogCallback(const wchar_t *msg)
-{
-    log_debug(QStringLiteral("CandleAPI: ") + QString::fromWCharArray(msg));
-}
-
 // Composite USB devices expose each CAN interface as a separate Windows device
 // path containing "&mi_XX" (e.g. "&mi_00", "&mi_02"). Strip that segment so
 // we can recognise multiple interface paths as the same physical device.
@@ -103,7 +98,7 @@ CandleApiDriver::CandleApiDriver(Backend &backend)
   : CanDriver(backend),
     setupPage(new GenericCanSetupPage(0))
 {
-    candle_log_fn = candleApiLogCallback;
+    candle_log_fn = nullptr;
     candle_log_verbose = false;
     QObject::connect(&backend, &Backend::onSetupDialogCreated, setupPage, &GenericCanSetupPage::onSetupDialogCreated);
 }

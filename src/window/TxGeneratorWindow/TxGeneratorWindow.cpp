@@ -111,7 +111,7 @@ TxGeneratorWindow::TxGeneratorWindow(QWidget *parent, Backend &backend) :
     ui->treeActive->header()->setSectionResizeMode(5, QHeaderView::ResizeToContents); // Interval
 
     // Add Random Payload button programmatically
-    _btnRandomPayload = new QPushButton(tr("Randomize Payload"), this);
+    _btnRandomPayload = new QPushButton(tr("Randomize Data"), this);
     _btnRandomPayload->setToolTip(tr("Randomize data bytes for selected messages"));
     _btnRandomPayload->setStyleSheet("QPushButton { font-weight: bold; background: #6f42c1; color: white; border-radius: 4px; padding: 4px 8px; } QPushButton:hover { background: #5a32a3; } QPushButton:pressed { background: #4a2d87; } QPushButton:disabled { background: #b8a9d4; }");
     ui->horizontalLayoutActiveControls->insertWidget(2, _btnRandomPayload); // Insert next to Run/Stop

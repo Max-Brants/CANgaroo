@@ -303,12 +303,6 @@ QList<CanTiming> CandleApiInterface::getAvailableBitrates()
 
     const bool isFdCapable = (caps.feature & CANDLE_FEATURE_FD) != 0;
 
-    log_debug(QStringLiteral("CandleApi: ch%1 fclk_can=%2 feature=0x%3 fd_capable=%4")
-        .arg(_channel)
-        .arg(caps.fclk_can)
-        .arg(caps.feature, 0, 16)
-        .arg(isFdCapable ? 1 : 0));
-
     int i = 0;
     if (isFdCapable) {
         // FD-capable device: expose FD timing combinations (nominal + data rate pairs)
@@ -511,10 +505,6 @@ void CandleApiInterface::open()
 
     _sharedDev->openCount++;
     _isOpen = true;
-    log_debug(QStringLiteral("CandleApi: channel %1 opened, FD=%2, flags=0x%3")
-        .arg(_channel)
-        .arg(_isFdEnabled ? QStringLiteral("enabled") : QStringLiteral("disabled"))
-        .arg(flags, 8, 16, QLatin1Char('0')));
 }
 
 bool CandleApiInterface::isOpen()

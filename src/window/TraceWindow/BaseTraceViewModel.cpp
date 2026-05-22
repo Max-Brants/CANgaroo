@@ -23,6 +23,7 @@
 #include "qtooltip.h"
 
 #include <QDateTime>
+#include <QLocale>
 #include <QColor>
 
 #include "core/Backend.h"
@@ -166,11 +167,11 @@ QVariant BaseTraceViewModel::formatTimestamp(timestamp_mode_t mode, const BusMes
 
     } else if (mode==timestamp_mode_absolute) {
 
-        return currentMsg.getDateTime().toString("hh:mm:ss.zzz");
+        return QLocale::c().toString(currentMsg.getDateTime(), "hh:mm:ss.zzz");
 
     } else if (mode==timestamp_mode_absolute_utc) {
 
-        return QDateTime::fromMSecsSinceEpoch(currentMsg.getTimestamp_ms(), Qt::UTC).toString("hh:mm:ss.zzz");
+        return QLocale::c().toString(QDateTime::fromMSecsSinceEpoch(currentMsg.getTimestamp_ms(), Qt::UTC), "hh:mm:ss.zzz");
 
     } else if (mode==timestamp_mode_relative) {
 
