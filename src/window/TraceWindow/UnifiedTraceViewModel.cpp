@@ -540,20 +540,13 @@ QString UnifiedTraceViewModel::formatUnifiedTimestamp(uint64_t ts, uint64_t prev
     double val = 0;
     switch (timestampMode()) {
         case timestamp_mode_absolute:
-        {
-            // Avoid QDateTime::fromMSecsSinceEpoch + toString; compute directly
-            qint64 ms = ts / 1000;
-            int totalSecs = static_cast<int>((ms / 1000) % 86400);
-            int h = totalSecs / 3600;
-            int m = (totalSecs % 3600) / 60;
-            int s = totalSecs % 60;
-            int msec = static_cast<int>(ms % 1000);
-            return QStringLiteral("%1:%2:%3.%4")
-                .arg(h, 2, 10, QLatin1Char('0'))
-                .arg(m, 2, 10, QLatin1Char('0'))
-                .arg(s, 2, 10, QLatin1Char('0'))
-                .arg(msec, 3, 10, QLatin1Char('0'));
-        }
+            return QLocale::c().toString(
+                QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(ts / 1000), Qt::LocalTime),
+                "hh:mm:ss.zzz");
+        case timestamp_mode_absolute_utc:
+            return QLocale::c().toString(
+                QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(ts / 1000), Qt::UTC),
+                "hh:mm:ss.zzz");
         case timestamp_mode_relative:
         {
             const uint64_t startTs = static_cast<uint64_t>(backend()->getTimestampAtMeasurementStart() * 1000000.0);
