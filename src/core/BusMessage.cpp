@@ -133,6 +133,9 @@ void BusMessage::setErrorFlag(BusError flag) { _errorFlags |= flag; }
 void BusMessage::clearErrorFlag(BusError flag) { _errorFlags &= ~BusErrors(flag); }
 void BusMessage::setErrorFlags(BusErrors flags) { _errorFlags = flags; }
 
+bool BusMessage::isLinSleepFrame()  const { return _busType == BusType::LIN && (_flags & 0x04u); }
+bool BusMessage::isLinWakeupFrame() const { return _busType == BusType::LIN && (_flags & 0x08u); }
+
 BusInterfaceId BusMessage::getInterfaceId() const
 {
     return _interface;

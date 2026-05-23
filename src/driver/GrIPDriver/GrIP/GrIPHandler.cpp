@@ -30,6 +30,10 @@
 #define SYSTEM_SET_GPIO_OUTPUT          33u // Set GPIO pin output states
 #define SYSTEM_GET_CHANNEL_CAPABILITIES 34u // Request capability bitmask for a given channel
 #define SYSTEM_SEND_CANFD_CFG           35u // Configure CAN FD channel (arb + data phase baudrates)
+#define SYSTEM_LIN_SLEEP_WAKEUP         36u // Put LIN channel to sleep or wake it up
+
+#define LIN_SLEEP_WAKEUP_ACTION_SLEEP   0u
+#define LIN_SLEEP_WAKEUP_ACTION_WAKEUP  1u
 
 // ---------------------------------------------------------------------------
 // CAN frame flag bits — stored in Protocol_CanFrame_t::Flags
@@ -181,7 +185,7 @@ typedef struct __attribute__((packed))
     uint8_t  Direction; // SYSTEM_ADD_LIN_FRAME:  0 = subscriber, 1 = publisher
                         // DATA_REPORT_LIN_MSG:  0 = publisher echo (TX), 1 = subscriber response (RX)
     uint8_t  Delay;     // Inter-frame delay in ms
-    uint8_t  Flags;     // Bit 0: alive, bit 1: valid checksum
+    uint8_t  Flags;     // Bit 0: responded, bit 1: valid checksum, bit 2: sleep event, bit 3: wakeup event
     uint32_t Time;      // Device timestamp (µs, wraps around)
     uint8_t  Data[8];   // LIN payload bytes
 } Protocol_LinFrame_t;
@@ -193,6 +197,13 @@ typedef struct __attribute__((packed))
     uint8_t ID;
     uint8_t Data[8];
 } Protocol_LinData_t;
+
+typedef struct __attribute__((packed))
+{
+    Protocol_SystemHeader_t Header;
+    uint8_t Channel;   // Zero-based LIN channel index
+    uint8_t Action;    // LIN_SLEEP_WAKEUP_ACTION_SLEEP / LIN_SLEEP_WAKEUP_ACTION_WAKEUP
+} Protocol_LinSleepWakeup_t;
 
 // Payload for SYSTEM_SEND_GPIO_CFG (32) — configure pin directions and auto-report interval.
 typedef struct __attribute__((packed))
@@ -503,6 +514,25 @@ void GrIPHandler::LinSetScheduleTable(uint8_t ch, uint8_t table_idx)
     tbl_cfg.TableIdx = table_idx;
 
     GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&tbl_cfg), sizeof(Protocol_LinTable_t)};
+
+    std::unique_lock<std::mutex> lck(m_MutexSerial);
+
+    std::ignore = GrIP_Transmit(PROT_GrIP, MSG_SYSTEM_CMD, RET_OK, &p);
+}
+
+void GrIPHandler::LinSleepWakeup(uint8_t ch, bool wakeup)
+{
+    Protocol_LinSleepWakeup_t cmd = {};
+
+    cmd.Header.Version = GRIP_HEADER_VERSION;
+    cmd.Header.Command = SYSTEM_LIN_SLEEP_WAKEUP;
+    cmd.Header.Length = sizeof(Protocol_LinSleepWakeup_t) - sizeof(Protocol_SystemHeader_t);
+    cmd.Header.Data = 0;
+
+    cmd.Channel = ch;
+    cmd.Action = wakeup ? LIN_SLEEP_WAKEUP_ACTION_WAKEUP : LIN_SLEEP_WAKEUP_ACTION_SLEEP;
+
+    GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&cmd), sizeof(Protocol_LinSleepWakeup_t)};
 
     std::unique_lock<std::mutex> lck(m_MutexSerial);
 
@@ -1024,9 +1054,19 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
             Protocol_LinFrame_t frame;
             std::memcpy(&frame, packet.Data, sizeof(Protocol_LinFrame_t));
 
+            constexpr uint8_t LIN_FLAG_RESPONDED      = 0x01;
+            constexpr uint8_t LIN_FLAG_VALID_CHECKSUM = 0x02;
+            constexpr uint8_t LIN_FLAG_SLEEP          = 0x04;
+            constexpr uint8_t LIN_FLAG_WAKEUP         = 0x08;
+
+            const bool isNormal        = (frame.Flags & (LIN_FLAG_RESPONDED | LIN_FLAG_VALID_CHECKSUM))
+                                          == (LIN_FLAG_RESPONDED | LIN_FLAG_VALID_CHECKSUM);
+            const bool isSleepOrWakeup = (frame.Flags & (LIN_FLAG_SLEEP | LIN_FLAG_WAKEUP)) != 0;
+
             BusMessage msg(frame.ID);
             msg.setBusType(BusType::LIN);
-            msg.setErrorFrame(frame.Flags != 0x03);
+            msg.setErrorFrame(!isNormal && !isSleepOrWakeup);
+            msg.setFlags(frame.Flags);
             msg.setLength(frame.DLC);
             msg.setRX(frame.Direction == 1); // 1 = subscriber response (RX), 0 = publisher echo (TX)
             msg.setTimestamp_ms(rxTimestamp_ms);

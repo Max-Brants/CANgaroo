@@ -406,9 +406,9 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
             case column_canid:
             {
                 uint32_t rawId = pmsg.rawFrames.isEmpty() ? 0 : pmsg.rawFrames.first().getId();
-                QString rawStr = QString("0x%1").arg(rawId, 0, 16);
-                if (pmsg.protocol.compare("uds", Qt::CaseInsensitive) == 0) return QString("%1 (SID:%2)").arg(rawStr).arg(pmsg.id, 2, 16, QChar('0'));
-                if (pmsg.protocol.compare("j1939", Qt::CaseInsensitive) == 0) return QString("%1 (PGN:%2)").arg(rawStr).arg(pmsg.id, 0, 16);
+                QString rawStr = QString("0x%1").arg(rawId, 0, 16).toUpper();
+                if (pmsg.protocol.compare("uds", Qt::CaseInsensitive) == 0) return QString("%1 (SID:%2)").arg(rawStr).arg(pmsg.id, 2, 16, QChar('0')).toUpper();
+                if (pmsg.protocol.compare("j1939", Qt::CaseInsensitive) == 0) return QString("%1 (PGN:%2)").arg(rawStr).arg(pmsg.id, 0, 16).toUpper();
                 return rawStr;
             }
             case column_type:
@@ -481,8 +481,11 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
             case column_channel: return backend()->getInterfaceName(msg.getInterfaceId());
             case column_direction: return msg.isRX() ? tr("RX") : tr("TX");
             case column_type: {
-                if (msg.busType() == BusType::LIN)
+                if (msg.busType() == BusType::LIN) {
+                    if (msg.isLinSleepFrame())  return QStringLiteral("LIN.SLP");
+                    if (msg.isLinWakeupFrame()) return QStringLiteral("LIN.WUP");
                     return QStringLiteral("LIN");
+                }
                 QString t;
                 if (msg.isFD())       t += QStringLiteral("FD.");
                 if (msg.isExtended()) t += QStringLiteral("EXT"); else t += QStringLiteral("STD");
@@ -495,6 +498,8 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
             case column_data: return msg.getDataHexString();
             case column_name:
                 if (msg.busType() == BusType::LIN) {
+                    if (msg.isLinSleepFrame())  return tr("Sleep");
+                    if (msg.isLinWakeupFrame()) return tr("Wakeup");
                     LinFrame *linFrame = backend()->findLinFrame(msg);
                     return linFrame ? linFrame->name() : QStringLiteral("");
                 }

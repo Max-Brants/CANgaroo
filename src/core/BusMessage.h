@@ -85,6 +85,9 @@ public:
     [[nodiscard]] bool isErrorFrame() const;
     void setErrorFrame(bool isErrorFrame);
 
+    [[nodiscard]] bool isLinSleepFrame()  const;
+    [[nodiscard]] bool isLinWakeupFrame() const;
+
     [[nodiscard]] BusErrors errorFlags() const;
     void setErrorFlag(BusError flag);
     void clearErrorFlag(BusError flag);

@@ -49,6 +49,7 @@
 #include "window/TxGeneratorWindow/TxGeneratorWindow.h"
 #include "window/ScriptWindow/ScriptWindow.h"
 #include "window/ReplayWindow/ReplayWindow.h"
+#include "window/LinControlWindow/LinControlWindow.h"
 #include "window/GatewayWindow/GatewayWindow.h"
 #include "window/SettingsDialog.h"
 
@@ -135,6 +136,7 @@ void MainWindow::initActions()
     connect(ui->actionGenerator_View, &QAction::triggered, this, [this]() { addTxGeneratorWidget(); });
     connect(ui->actionScript_View, &QAction::triggered, this, [this]() { addScriptWidget(); });
     connect(ui->actionReplay_View, &QAction::triggered, this, [this]() { addReplayWidget(); });
+    connect(ui->actionLin_Control_View, &QAction::triggered, this, [this]() { addLinControlWidget(); });
     connect(ui->actionSettings, &QAction::triggered, this, &MainWindow::showSettingsDialog);
 
     auto *actionStandaloneGraph = new QAction(tr("Standalone Graph"), this);
@@ -852,15 +854,36 @@ void MainWindow::createStandaloneGraphWindow()
 QDockWidget *MainWindow::makeDock(const QString &title, const QString &objectName,
                                    QWidget *content, QMainWindow *parent)
 {
+    const bool tabify = (parent == nullptr);
     if (!parent)
         parent = currentTab();
     if (!parent)
         return nullptr;
 
+    // Snapshot existing bottom-area docks before adding the new one.
+    QDockWidget *tabTarget = nullptr;
+    if (tabify)
+    {
+        const auto existing = parent->findChildren<QDockWidget *>(QString{}, Qt::FindDirectChildrenOnly);
+        for (QDockWidget *d : existing)
+        {
+            if (!d->isFloating() && parent->dockWidgetArea(d) == Qt::BottomDockWidgetArea)
+                tabTarget = d;
+        }
+    }
+
     auto *dock = new QDockWidget(title, parent);
     dock->setObjectName(objectName);
     dock->setWidget(content);
     parent->addDockWidget(Qt::BottomDockWidgetArea, dock);
+
+    if (tabTarget)
+    {
+        parent->tabifyDockWidget(tabTarget, dock);
+        dock->show();
+        dock->raise();
+    }
+
     setupDockFloatReparent(dock, parent);
     return dock;
 }
@@ -909,6 +932,12 @@ QDockWidget *MainWindow::addReplayWidget(QMainWindow *parent)
 {
     return makeDock(tr("Replay"), QStringLiteral("dock_replay"),
                     new ReplayWindow(nullptr, backend()), parent);
+}
+
+QDockWidget *MainWindow::addLinControlWidget(QMainWindow *parent)
+{
+    return makeDock(tr("LIN Control"), QStringLiteral("dock_lin_control"),
+                    new LinControlWindow(nullptr, backend()), parent);
 }
 
 void MainWindow::setupDockFloatReparent(QDockWidget *dock, QMainWindow *innerParent)

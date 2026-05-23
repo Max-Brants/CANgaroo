@@ -83,6 +83,7 @@ public:
 
     virtual bool isOpen();
 
+    virtual void sendLinSleepWakeup(bool wakeup) { Q_UNUSED(wakeup) }
     virtual void sendMessage(const BusMessage &msg) = 0;
     virtual bool readMessage(QList<BusMessage> &msglist, unsigned int timeout_ms) = 0;
 

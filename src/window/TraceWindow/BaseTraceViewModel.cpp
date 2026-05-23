@@ -212,8 +212,11 @@ QVariant BaseTraceViewModel::data_DisplayRole_Message(const QModelIndex &index, 
 
         case column_type:
         {
-            if (isLin)
+            if (isLin) {
+                if (currentMsg.isLinSleepFrame())  return QStringLiteral("LIN.SLP");
+                if (currentMsg.isLinWakeupFrame()) return QStringLiteral("LIN.WUP");
                 return QStringLiteral("LIN");
+            }
             QString _type = QString(currentMsg.isFD() ? "FD.":"") + QString(currentMsg.isExtended()? "EXT" : "STD") + QString(currentMsg.isRTR()?".RTR":"") + QString((currentMsg.isBRS()?".BRS":""));
             return _type;
         }
@@ -224,6 +227,8 @@ QVariant BaseTraceViewModel::data_DisplayRole_Message(const QModelIndex &index, 
         case column_name:
         {
             if (isLin) {
+                if (currentMsg.isLinSleepFrame())  return tr("Sleep");
+                if (currentMsg.isLinWakeupFrame()) return tr("Wakeup");
                 LinFrame *linFrame = backend()->findLinFrame(currentMsg);
                 return linFrame ? linFrame->name() : QStringLiteral("");
             }

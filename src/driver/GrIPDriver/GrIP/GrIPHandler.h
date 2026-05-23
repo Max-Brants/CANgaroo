@@ -170,6 +170,7 @@ public:
     void CanSetMode(uint8_t ch, bool listen_only);
 
     void LinSetScheduleTable(uint8_t ch, uint8_t table_idx);
+    void LinSleepWakeup(uint8_t ch, bool wakeup);
 
     /**
      * @brief Configures the nominal bit rate of a CAN channel.

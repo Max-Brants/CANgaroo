@@ -94,6 +94,7 @@ public:
     void close() override;
     bool isOpen() override;
 
+    void sendLinSleepWakeup(bool wakeup) override;
     void sendMessage(const BusMessage &msg) override;
     bool readMessage(QList<BusMessage> &msglist, unsigned int timeout_ms) override;
 

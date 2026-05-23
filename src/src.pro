@@ -60,6 +60,7 @@ include($$PWD/window/TxGeneratorWindow/TxGeneratorWindow.pri)
 include($$PWD/window/ScriptWindow/ScriptWindow.pri)
 include($$PWD/window/ReplayWindow/ReplayWindow.pri)
 include($$PWD/window/GatewayWindow/GatewayWindow.pri)
+include($$PWD/window/LinControlWindow/LinControlWindow.pri)
 include($$PWD/helpers/helpers.pri)
 
 

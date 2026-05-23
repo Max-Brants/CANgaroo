@@ -510,6 +510,12 @@ bool GrIPInterface::isOpen()
     return _isOpen;
 }
 
+void GrIPInterface::sendLinSleepWakeup(bool wakeup)
+{
+    if (_isLin && _isOpen)
+        m_GrIPHandler->LinSleepWakeup(_channel_idx, wakeup);
+}
+
 void GrIPInterface::sendMessage(const BusMessage &msg)
 {
     if (_manufacturer == CANIL_CAN)
