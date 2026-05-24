@@ -750,6 +750,9 @@ int MainWindow::askSaveBecauseWorkspaceModified()
     if (!_workspaceModified)
         return QMessageBox::Discard;
 
+    if (settings.value("ui/skipSaveWorkspacePrompt", false).toBool())
+        return QMessageBox::Discard;
+
     QMessageBox msgBox;
     msgBox.setText(tr("The current workspace has been modified."));
     msgBox.setInformativeText(tr("Do you want to save your changes?"));
@@ -760,6 +763,9 @@ int MainWindow::askSaveBecauseWorkspaceModified()
     msgBox.button(QMessageBox::Discard)->setIcon(style()->standardIcon(QStyle::SP_DialogDiscardButton));
     msgBox.button(QMessageBox::Cancel)->setIcon(style()->standardIcon(QStyle::SP_DialogCancelButton));
 
+    auto *doNotAskCheck = new QCheckBox(tr("Do not ask again (always discard)"), &msgBox);
+    msgBox.setCheckBox(doNotAskCheck);
+
     msgBox.setWindowFlag(Qt::FramelessWindowHint);
     msgBox.setStyleSheet(QStringLiteral("QMessageBox { border: 3px solid palette(highlight); padding: 10px; }"));
 
@@ -768,6 +774,10 @@ int MainWindow::askSaveBecauseWorkspaceModified()
     msgBox.move(center.x() - msgBox.width() / 2, center.y() - msgBox.height() / 2);
 
     const int result = msgBox.exec();
+
+    if (doNotAskCheck->isChecked())
+        settings.setValue("ui/skipSaveWorkspacePrompt", true);
+
     if (result == QMessageBox::Save && !saveWorkspace())
         return QMessageBox::Cancel;  // save failed — do not close
 
@@ -910,7 +920,7 @@ QDockWidget *MainWindow::addLogWidget(QMainWindow *parent)
 
 QDockWidget *MainWindow::addStatusWidget(QMainWindow *parent)
 {
-    return makeDock(tr("CAN Status"), QStringLiteral("dock_status"),
+    return makeDock(tr("BUS Status"), QStringLiteral("dock_status"),
                     new CanStatusWindow(nullptr, backend()), parent);
 }
 
@@ -1254,6 +1264,9 @@ void MainWindow::showSettingsDialog()
     // Apply UDS 29-bit decoding setting.
     settings.setValue("decoder/uds29Bit", dlg.uds29BitEnabled());
     backend().notifyDecoderConfigChanged();
+
+    // Apply skip-save-prompt setting.
+    settings.setValue("ui/skipSaveWorkspacePrompt", dlg.skipSaveWorkspacePrompt());
 }
 
 #if defined(_WIN32)

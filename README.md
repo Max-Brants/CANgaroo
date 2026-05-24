@@ -35,6 +35,7 @@
 <br>![Cangaroo Trace View](src/docs/view.png)<br>
 
 ## Languages
+
 * 🇩🇪 German
 * 🇺🇸 English
 * 🇪🇸 Spain
@@ -43,7 +44,8 @@
 ## 🛠️ Building
 ### 🐧 Linux
 
-#### Install dependencies:
+#### Install dependencies
+
 | Distribution | Command |
 | :--- | :--- |
 | **Ubuntu / Debian** | `sudo apt install build-essential qt6-base-dev qt6-charts-dev qt6-serialport-dev qt6-serialbus-dev qt6-svg-dev qt6-tools-dev qt6-l10n-tools libqt6opengl6-dev libnl-3-dev libnl-route-3-dev python3-dev pybind11-dev pkg-config` |
@@ -51,6 +53,7 @@
 | **Arch Linux** | `sudo pacman -S base-devel qt6-base qt6-charts qt6-serialport qt6-serialbus qt6-svg qt6-tools libnl python pybind11 pkgconf` |
 
 #### Build:
+
 ```bash
 qmake6
 make -j$(nproc)
@@ -79,11 +82,13 @@ sudo setcap cap_net_admin+ep /sbin/ip
 > **Note:** If the interface is set to *"Configured by OS"* in the setup dialog, CANgaroo will not touch the interface configuration and no elevated privileges are needed.
 
 ### 🪟 Windows
+
 * Install [Qt 6](https://www.qt.io/download-qt-installer) (Community / Open Source) including the **Qt Serial Bus** component.
 * Install [Python 3](https://www.python.org/downloads/) and [pybind11](https://github.com/pybind/pybind11) (`pip install pybind11`).
 * Open `cangaroo.pro` in Qt Creator and build.
 
 #### Deployment
+
 Include the required Qt6 libraries or run `windeployqt` on the `.exe`:
 ```
 windeployqt --release cangaroo.exe
@@ -130,6 +135,7 @@ windeployqt --release cangaroo.exe
   5. Place the `zscanfd.dll` from `bin/cangaroo`
 
 ## ARXML to DBC Conversion
+
 Cangaroo natively supports DBC. If you have ARXML files, you can convert them using `canconvert`:
 ```bash
 # Install canconvert
@@ -143,8 +149,8 @@ canconvert TCU.arxml TCU.dbc
 
 Download the latest release from the [Releases](https://github.com/Schildkroet/CANgaroo).
 
-
 ## 📜 Credits
+
 Written by Hubert Denkmair <hubert@denkmair.de>
 
 Further development by:
@@ -153,3 +159,9 @@ Further development by:
 * Schildkroet (https://github.com/Schildkroet/CANgaroo)
 * Wikilift (https://github.com/wikilift/CANgaroo)
 * Jayachandran Dharuman (https://github.com/OpenAutoDiagLabs/cangaroo)
+
+## DISCLAIMER
+
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and non-infringement. In no event shall the authors, maintainers, contributors, or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+Use of this software is entirely at your own risk. The authors and maintainers accept no responsibility for any harm, data loss, system damage, legal issues, or any other consequences resulting from the use, misuse, or inability to use this software. It is your sole responsibility to ensure that this software is suitable for your intended use case and complies with all applicable laws and regulations in your jurisdiction.
+This project is not affiliated with, endorsed by, or in any way officially connected to any third-party organizations, products, or services that may be referenced within it.

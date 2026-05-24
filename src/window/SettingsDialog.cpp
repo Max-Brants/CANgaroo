@@ -80,6 +80,11 @@ SettingsDialog::SettingsDialog(QSettings &settings, QActionGroup *languageGroup,
     m_uds29BitCheck->setChecked(settings.value("decoder/uds29Bit", true).toBool());
     form->addRow(m_uds29BitCheck);
 
+    // --- Skip save-workspace prompt ---
+    m_skipSaveWorkspacePromptCheck = new QCheckBox(tr("Do not ask to save workspace on close (always discard)"), this);
+    m_skipSaveWorkspacePromptCheck->setChecked(settings.value("ui/skipSaveWorkspacePrompt", false).toBool());
+    form->addRow(m_skipSaveWorkspacePromptCheck);
+
     mainLayout->addLayout(form);
     mainLayout->addSpacing(10);
 
@@ -118,4 +123,9 @@ int SettingsDialog::selectedFontSize() const
 bool SettingsDialog::uds29BitEnabled() const
 {
     return m_uds29BitCheck->isChecked();
+}
+
+bool SettingsDialog::skipSaveWorkspacePrompt() const
+{
+    return m_skipSaveWorkspacePromptCheck->isChecked();
 }

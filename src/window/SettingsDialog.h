@@ -21,6 +21,7 @@ public:
     bool clearTraceOnStart() const;
     int selectedFontSize() const;
     bool uds29BitEnabled() const;
+    bool skipSaveWorkspacePrompt() const;
 
 private:
     QComboBox *m_themeCombo;
@@ -28,5 +29,6 @@ private:
     QCheckBox *m_restoreWindowCheck;
     QCheckBox *m_clearTraceOnStartCheck;
     QCheckBox *m_uds29BitCheck;
+    QCheckBox *m_skipSaveWorkspacePromptCheck;
     QSpinBox *m_fontSizeSpin;
 };
