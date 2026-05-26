@@ -25,7 +25,7 @@
 #include "SetupDialogTreeModel.h"
 
 SetupDialogTreeItem::SetupDialogTreeItem(item_type type, Backend *backend, SetupDialogTreeItem *parent)
-  : setup(0), network(0), intf(0), candb(0), canOpenDb(0), lindb(0), _backend(backend), _type(type), _parent(parent)
+  : setup(nullptr), network(nullptr), intf(nullptr), candb(nullptr), canOpenDb(nullptr), lindb(nullptr), _backend(backend), _type(type), _parent(parent)
 {
 
 }

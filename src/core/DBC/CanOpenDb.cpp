@@ -238,8 +238,9 @@ bool CanOpenDb::parseIntegerExpression(const QString &text, quint8 nodeId, quint
 
         const QString token = expr.mid(pos, next - pos);
         bool ok = false;
-        quint64 part = token.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive)
-            ? token.mid(2).toULongLong(&ok, 16)
+        const bool isHex = token.startsWith(QStringLiteral("0x"), Qt::CaseInsensitive);
+        quint64 part = isHex
+            ? ((token.size() > 2) ? token.mid(2).toULongLong(&ok, 16) : 0)
             : token.toULongLong(&ok, 10);
         if (!ok) {
             return false;
