@@ -8,9 +8,11 @@ struct ProtocolConfig {
     bool enableUds29Bit = true;
 };
 
+class Backend;
+
 class ProtocolManager {
 public:
-    ProtocolManager();
+    explicit ProtocolManager(Backend *backend = nullptr);
     ~ProtocolManager() = default;
 
     /**
@@ -26,6 +28,7 @@ public:
 private:
     std::shared_ptr<IDecoder> m_udsDecoder;
     std::shared_ptr<IDecoder> m_j1939Decoder;
+    std::shared_ptr<IDecoder> m_canOpenDecoder;
     ProtocolConfig m_config;
     uint32_t m_msgCounter = 0;
 };

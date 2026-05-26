@@ -25,7 +25,7 @@
 #include "SetupDialogTreeModel.h"
 
 SetupDialogTreeItem::SetupDialogTreeItem(item_type type, Backend *backend, SetupDialogTreeItem *parent)
-  : setup(0), network(0), intf(0), candb(0), _backend(backend), _type(type), _parent(parent)
+  : setup(0), network(0), intf(0), candb(0), canOpenDb(0), lindb(0), _backend(backend), _type(type), _parent(parent)
 {
 
 }
@@ -103,6 +103,20 @@ QVariant SetupDialogTreeItem::dataCanDb(const QModelIndex &index) const
     }
 }
 
+QVariant SetupDialogTreeItem::dataCanOpenDb(const QModelIndex &index) const
+{
+    switch (index.column()) {
+        case SetupDialogTreeModel::column_device:
+            return canOpenDb->fileName();
+        case SetupDialogTreeModel::column_filename:
+            return canOpenDb->fileName();
+        case SetupDialogTreeModel::column_path:
+            return canOpenDb->directory();
+        default:
+            return QVariant();
+    }
+}
+
 QVariant SetupDialogTreeItem::dataLinDb(const QModelIndex &index) const
 {
     switch (index.column()) {
@@ -126,6 +140,7 @@ QVariant SetupDialogTreeItem::dataDisplayRole(const QModelIndex &index) const
         case type_interface: return dataInterface(index);
         case type_candb_root: return QObject::tr("Database");
         case type_candb: return dataCanDb(index);
+        case type_canopendb: return dataCanOpenDb(index);
         case type_lindb: return dataLinDb(index);
     }
     return QVariant();
@@ -135,4 +150,3 @@ SetupDialogTreeItem::item_type SetupDialogTreeItem::getType()
 {
     return _type;
 }
-

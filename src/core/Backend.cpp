@@ -290,6 +290,21 @@ pLinDb Backend::loadLdf(QString filename, QString *errorMsg)
     return lindb;
 }
 
+pCanOpenDb Backend::loadEds(QString filename, QString *errorMsg)
+{
+    QFileInfo info(filename);
+    if (!info.exists() || !info.isReadable()) {
+        if (errorMsg) *errorMsg = tr("File not found or not readable.");
+        return pCanOpenDb();
+    }
+    pCanOpenDb canOpenDb(new CanOpenDb());
+    if (!canOpenDb->loadFile(filename)) {
+        if (errorMsg) *errorMsg = canOpenDb->lastError();
+        return pCanOpenDb();
+    }
+    return canOpenDb;
+}
+
 pCanDb Backend::loadDbc(QString filename, QString *errorMsg)
 {
     DbcParser parser;

@@ -31,6 +31,7 @@
 #include "driver/CanDriver.h"
 #include "core/BusMessage.h"
 #include "core/DBC/CanDb.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 #include "core/MeasurementSetup.h"
 #include "core/Log.h"
@@ -92,6 +93,7 @@ public:
     BusInterface *getInterfaceByDriverAndName(QString driverName, QString deviceName);
 
     pCanDb loadDbc(QString filename, QString *errorMsg = nullptr);
+    pCanOpenDb loadEds(QString filename, QString *errorMsg = nullptr);
     pLinDb loadLdf(QString filename, QString *errorMsg = nullptr);
 
     void notifyDecoderConfigChanged();

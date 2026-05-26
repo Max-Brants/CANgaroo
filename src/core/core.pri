@@ -8,6 +8,7 @@ SOURCES += \
     $$PWD/DBC/CanDb.cpp \
     $$PWD/DBC/CanDbNode.cpp \
     $$PWD/DBC/CanDbSignal.cpp \
+    $$PWD/DBC/CanOpenDb.cpp \
     $$PWD/DBC/LinDb.cpp \
     $$PWD/DBC/LinFrame.cpp \
     $$PWD/DBC/LinSignal.cpp \
@@ -30,6 +31,7 @@ HEADERS += \
     $$PWD/DBC/CanDb.h \
     $$PWD/DBC/CanDbNode.h \
     $$PWD/DBC/CanDbSignal.h \
+    $$PWD/DBC/CanOpenDb.h \
     $$PWD/DBC/LinDb.h \
     $$PWD/DBC/LinFrame.h \
     $$PWD/DBC/LinSignal.h \

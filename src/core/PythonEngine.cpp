@@ -23,6 +23,7 @@
 #include "core/DBC/CanDb.h"
 #include "core/DBC/CanDbMessage.h"
 #include "core/DBC/CanDbSignal.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 #include "core/DBC/LinFrame.h"
 #include "core/DBC/LinSignal.h"
@@ -30,6 +31,7 @@
 #include "core/MeasurementNetwork.h"
 #include "core/Log.h"
 #include "driver/BusInterface.h"
+#include "decoders/CanOpenDecoder.h"
 
 namespace py = pybind11;
 using namespace py::literals;
@@ -453,6 +455,77 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     {
         if (g_activeEngine) { log_error(QString::fromStdString(text)); }
     });
+
+    auto buildProtocolDict = [](const ProtocolMessage &msg) -> py::dict
+    {
+        py::dict d;
+        d["protocol"] = msg.protocol.toStdString();
+        d["name"] = msg.name.toStdString();
+        d["description"] = msg.description.toStdString();
+        d["id"] = msg.id;
+        d["payload"] = py::bytes(msg.payload.constData(), msg.payload.size());
+
+        py::dict metadata;
+        for (auto it = msg.metadata.begin(); it != msg.metadata.end(); ++it)
+        {
+            metadata[py::cast(it.key().toStdString())] = it.value().toString().toStdString();
+        }
+        d["metadata"] = metadata;
+        return d;
+    };
+
+    // --- CANopen database access ---
+
+    m.def("canopen_databases", []() -> py::list
+    {
+        py::list result;
+        if (!g_activeEngine) { return result; }
+
+        MeasurementSetup &setup = g_activeEngine->backend().getSetup();
+        for (MeasurementNetwork *net : setup.getNetworks())
+        {
+            for (const pCanOpenDb &db : std::as_const(net->_canOpenDbs))
+            {
+                py::dict dbInfo;
+                dbInfo["file"] = db->fileName().toStdString();
+                dbInfo["path"] = db->path().toStdString();
+                dbInfo["network"] = net->name().toStdString();
+                dbInfo["device"] = db->deviceName().toStdString();
+                if (db->configuredNodeId() >= 0) {
+                    dbInfo["node_id"] = db->configuredNodeId();
+                }
+
+                py::list objects;
+                for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it)
+                {
+                    const CanOpenObjectEntry &obj = it.value();
+                    py::dict o;
+                    o["index"] = obj.index;
+                    o["sub_index"] = obj.subIndex;
+                    o["name"] = obj.name.toStdString();
+                    o["data_type"] = obj.dataTypeName.toStdString();
+                    o["default"] = obj.defaultValue.toStdString();
+                    o["value"] = obj.parameterValue.toStdString();
+                    objects.append(o);
+                }
+                dbInfo["objects"] = objects;
+                result.append(dbInfo);
+            }
+        }
+        return result;
+    });
+
+    m.def("decode_canopen", [buildProtocolDict](const BusMessage &msg) -> py::object
+    {
+        if (!g_activeEngine) { return py::none(); }
+
+        CanOpenDecoder decoder(&g_activeEngine->backend());
+        ProtocolMessage out;
+        if (decoder.tryDecode(msg, out) != DecodeStatus::Completed) {
+            return py::none();
+        }
+        return buildProtocolDict(out);
+    }, py::arg("msg"));
 
     // --- DBC / database access ---
 

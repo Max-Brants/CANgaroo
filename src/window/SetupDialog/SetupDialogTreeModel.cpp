@@ -22,6 +22,7 @@
 #include "SetupDialogTreeModel.h"
 
 #include "driver/BusInterface.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 
 SetupDialogTreeModel::SetupDialogTreeModel(Backend *backend, QObject *parent)
@@ -214,6 +215,36 @@ void SetupDialogTreeModel::deleteCanDb(const QModelIndex &index)
     }
 }
 
+SetupDialogTreeItem *SetupDialogTreeModel::addCanOpenDb(const QModelIndex &parent, pCanOpenDb db)
+{
+    SetupDialogTreeItem *parentItem = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
+    if (!parentItem) { return nullptr; }
+
+    SetupDialogTreeItem *item = nullptr;
+    if (parentItem->network) {
+        beginInsertRows(parent, rowCount(parent), rowCount(parent));
+        parentItem->network->addCanOpenDb(db);
+        item = loadCanOpenDb(*parentItem, db);
+        endInsertRows();
+    }
+    return item;
+}
+
+void SetupDialogTreeModel::deleteCanOpenDb(const QModelIndex &index)
+{
+    SetupDialogTreeItem *item = static_cast<SetupDialogTreeItem*>(index.internalPointer());
+    if (!item) { return; }
+
+    SetupDialogTreeItem *parentItem = item->getParentItem();
+    if (parentItem && parentItem->network && parentItem->network->_canOpenDbs.contains(item->canOpenDb)) {
+        beginRemoveRows(index.parent(), item->row(), item->row());
+        parentItem->network->_canOpenDbs.removeAll(item->canOpenDb);
+        item->getParentItem()->removeChild(item);
+        delete item;
+        endRemoveRows();
+    }
+}
+
 SetupDialogTreeItem *SetupDialogTreeModel::addLinDb(const QModelIndex &parent, pLinDb db)
 {
     SetupDialogTreeItem *parentItem = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
@@ -300,6 +331,14 @@ SetupDialogTreeItem *SetupDialogTreeModel::loadCanDb(SetupDialogTreeItem &parent
     return item;
 }
 
+SetupDialogTreeItem *SetupDialogTreeModel::loadCanOpenDb(SetupDialogTreeItem &parent, const pCanOpenDb &db)
+{
+    SetupDialogTreeItem *item = new SetupDialogTreeItem(SetupDialogTreeItem::type_canopendb, _backend, &parent);
+    item->canOpenDb = db;
+    parent.appendChild(item);
+    return item;
+}
+
 SetupDialogTreeItem *SetupDialogTreeModel::loadLinDb(SetupDialogTreeItem &parent, const pLinDb &db)
 {
     SetupDialogTreeItem *item = new SetupDialogTreeItem(SetupDialogTreeItem::type_lindb, _backend, &parent);
@@ -327,6 +366,10 @@ SetupDialogTreeItem *SetupDialogTreeModel::loadNetwork(SetupDialogTreeItem *root
 
     for (const auto &candb : network._canDbs) {
         loadCanDb(*item_candb_root, candb);
+    }
+
+    for (const auto &canOpenDb : network._canOpenDbs) {
+        loadCanOpenDb(*item_candb_root, canOpenDb);
     }
 
     for (const auto &lindb : network._linDbs) {

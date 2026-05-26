@@ -1,8 +1,12 @@
 #include <iostream>
 #include <iomanip>
 #include <cassert>
+#include <QFile>
+#include <QTextStream>
 #include "decoders/UdsDecoder.h"
 #include "decoders/J1939Decoder.h"
+#include "decoders/CanOpenDecoder.h"
+#include "core/DBC/CanOpenDb.h"
 
 void testUdsSingleFrame() {
     UdsDecoder decoder;
@@ -88,11 +92,142 @@ void testUdsNegativeResponse() {
     std::cout << "testUdsNegativeResponse passed" << std::endl;
 }
 
+
+void testCanOpenEdsLoad() {
+    const QString path = QStringLiteral("/tmp/cangaroo-canopen-test.eds");
+    QFile file(path);
+    assert(file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text));
+    QTextStream out(&file);
+    out << "[DeviceInfo]
+";
+    out << "VendorName=Acme
+";
+    out << "ProductName=Demo Node
+
+";
+    out << "[DeviceCommissioning]
+";
+    out << "NodeID=0x05
+
+";
+    out << "[2000]
+";
+    out << "ParameterName=ControlWord
+";
+    out << "DataType=0x0006
+";
+    out << "AccessType=rw
+";
+    out << "PDOMapping=1
+";
+    out << "DefaultValue=0
+
+";
+    out << "[2001]
+";
+    out << "ParameterName=StatusWord
+";
+    out << "DataType=0x0006
+";
+    out << "AccessType=ro
+";
+    out << "PDOMapping=1
+";
+    out << "DefaultValue=0
+
+";
+    out << "[1400sub1]
+";
+    out << "ParameterName=RPDO1 COB-ID
+";
+    out << "DataType=0x0007
+";
+    out << "DefaultValue=$NODEID+0x200
+
+";
+    out << "[1600sub0]
+";
+    out << "DataType=0x0005
+";
+    out << "DefaultValue=1
+
+";
+    out << "[1600sub1]
+";
+    out << "DataType=0x0007
+";
+    out << "DefaultValue=0x20000010
+
+";
+    out << "[1800sub1]
+";
+    out << "ParameterName=TPDO1 COB-ID
+";
+    out << "DataType=0x0007
+";
+    out << "DefaultValue=$NODEID+0x180
+
+";
+    out << "[1A00sub0]
+";
+    out << "DataType=0x0005
+";
+    out << "DefaultValue=1
+
+";
+    out << "[1A00sub1]
+";
+    out << "DataType=0x0007
+";
+    out << "DefaultValue=0x20010010
+";
+    file.close();
+
+    CanOpenDb db;
+    assert(db.loadFile(path));
+    assert(db.deviceName() == "Demo Node");
+    assert(db.configuredNodeId() == 5);
+    const CanOpenObjectEntry *controlWord = db.findObject(0x2000, 0x00);
+    assert(controlWord != nullptr);
+    assert(controlWord->name == "ControlWord");
+
+    const QList<const CanOpenPdo*> tpdos = db.findMatchingPdos(0x185, 5, true);
+    assert(tpdos.size() == 1);
+    assert(!tpdos.first()->mappings.isEmpty());
+    assert(tpdos.first()->mappings.first().objectName == "StatusWord");
+    std::cout << "testCanOpenEdsLoad passed" << std::endl;
+}
+
+void testCanOpenSdoDecode() {
+    CanOpenDecoder decoder;
+    BusMessage msg(0x605);
+    msg.setLength(8);
+    msg.setByte(0, 0x2B); // expedited 2-byte download request
+    msg.setByte(1, 0x00);
+    msg.setByte(2, 0x20);
+    msg.setByte(3, 0x00);
+    msg.setByte(4, 0x34);
+    msg.setByte(5, 0x12);
+    msg.setByte(6, 0x00);
+    msg.setByte(7, 0x00);
+
+    ProtocolMessage out;
+    DecodeStatus result = decoder.tryDecode(msg, out);
+    assert(result == DecodeStatus::Completed);
+    assert(out.protocol == "CANopen");
+    assert(out.name == "SDO Download Request");
+    assert(out.metadata.value("Node ID").toInt() == 5);
+    assert(out.metadata.value("Value").toString() == "4660");
+    std::cout << "testCanOpenSdoDecode passed" << std::endl;
+}
+
 int main() {
     testUdsSingleFrame();
     testUdsMultiFrame();
     testJ1939SingleFrame();
     testUdsNegativeResponse();
+    testCanOpenEdsLoad();
+    testCanOpenSdoDecode();
     std::cout << "All decoder tests passed!" << std::endl;
     return 0;
 }
