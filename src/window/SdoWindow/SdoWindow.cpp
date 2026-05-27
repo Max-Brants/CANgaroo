@@ -812,7 +812,7 @@ void SdoWindow::updateEditorForSelection()
         _hexEditor->setText(currentValue);
         _hexEditor->setPlaceholderText(tr("AA BB CC DD"));
         _editorHintLabel->setText(isDomainType(*entry)
-            ? tr("Domain upload supported; writes stay limited to expedited transfers.")
+            ? tr("Domain upload is supported; writes are limited to expedited transfers (no segmented download yet).")
             : tr("Hex byte editor (expedited writes up to 4 bytes)"));
     }
     else
@@ -1081,7 +1081,7 @@ bool SdoWindow::prepareWritePayload(const CanOpenObjectEntry &entry, QByteArray 
             }
             quint64 encoded = static_cast<quint64>(value);
             if (value < 0)
-                encoded = (1ULL << (width * 8)) + value;
+                encoded &= (1ULL << (width * 8)) - 1ULL;
             payload = integerToLittleEndian(encoded, width);
             return true;
         }
