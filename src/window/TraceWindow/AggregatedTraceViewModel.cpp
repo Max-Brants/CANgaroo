@@ -22,6 +22,7 @@
 #include "AggregatedTraceViewModel.h"
 #include <QColor>
 #include <QDateTime>
+#include <QSettings>
 #include <QSet>
 #include "core/ThemeManager.h"
 
@@ -31,9 +32,11 @@
 #include "core/DBC/LinFrame.h"
 
 AggregatedTraceViewModel::AggregatedTraceViewModel(Backend &backend)
-    : BaseTraceViewModel(backend)
+    : BaseTraceViewModel(backend), _protocolManager(&backend)
 {
     _rootItem = new AggregatedTraceViewItem(0);
+    QSettings s;
+    _protocolManager.config().enableUds29Bit = s.value("decoder/uds29Bit", true).toBool();
     connect(backend.getTrace(), &BusTrace::beforeAppend, this, &AggregatedTraceViewModel::beforeAppend);
     connect(backend.getTrace(), &BusTrace::beforeClear, this, &AggregatedTraceViewModel::beforeClear);
     connect(backend.getTrace(), &BusTrace::afterClear, this, &AggregatedTraceViewModel::afterClear);
@@ -55,10 +58,38 @@ AggregatedTraceViewModel::AggregatedTraceViewModel(Backend &backend)
     _fadeTimer.start(200);
 }
 
-void AggregatedTraceViewModel::createItem(const BusMessage &msg)
+QString AggregatedTraceViewModel::formatProtocolPayload(const QByteArray &payload)
 {
+    if (payload.isEmpty()) {
+        return QString();
+    }
+
+    static const char hex[] = "0123456789ABCDEF";
+    const int size = payload.size();
+    QString result(size * 3 - 1, QLatin1Char(' '));
+    QChar *out = result.data();
+
+    for (int i = 0; i < size; ++i) {
+        const uint8_t b = static_cast<uint8_t>(payload.at(i));
+        if (i > 0) {
+            ++out;
+        }
+        *out++ = QLatin1Char(hex[b >> 4]);
+        *out++ = QLatin1Char(hex[b & 0x0F]);
+    }
+
+    return result;
+}
+
+void AggregatedTraceViewModel::createItem(const PendingMessageEntry &entry)
+{
+    const BusMessage &msg = entry.msg;
     AggregatedTraceViewItem *item = new AggregatedTraceViewItem(_rootItem);
     item->_lastmsg = msg;
+    item->_hasProtocolMsg = entry.hasProtocolMessage;
+    if (entry.hasProtocolMessage) {
+        item->_lastProtocolMsg = entry.protocolMessage;
+    }
 
     if (msg.busType() == BusType::LIN) {
         LinFrame *linFrame = backend()->findLinFrame(msg);
@@ -80,12 +111,17 @@ void AggregatedTraceViewModel::createItem(const BusMessage &msg)
     _map[makeUniqueKey(msg)] = item;
 }
 
-void AggregatedTraceViewModel::updateItem(const BusMessage &msg)
+void AggregatedTraceViewModel::updateItem(const PendingMessageEntry &entry)
 {
+    const BusMessage &msg = entry.msg;
     AggregatedTraceViewItem *item = _map.value(makeUniqueKey(msg));
     if (item) {
         item->_prevmsg = item->_lastmsg;
         item->_lastmsg = msg;
+        item->_hasProtocolMsg = entry.hasProtocolMessage;
+        if (entry.hasProtocolMessage) {
+            item->_lastProtocolMsg = entry.protocolMessage;
+        }
     }
 }
 
@@ -94,8 +130,8 @@ void AggregatedTraceViewModel::onUpdateModel()
 
     if (!_pendingMessageInserts.isEmpty()) {
         beginInsertRows(QModelIndex(), _rootItem->childCount(), _rootItem->childCount()+_pendingMessageInserts.size()-1);
-        for (const auto &msg : _pendingMessageInserts) {
-            createItem(msg);
+        for (const auto &entry : _pendingMessageInserts) {
+            createItem(entry);
         }
         endInsertRows();
         _pendingMessageInserts.clear();
@@ -103,10 +139,10 @@ void AggregatedTraceViewModel::onUpdateModel()
 
     if (!_pendingMessageUpdates.isEmpty()) {
         QSet<int> updatedRows;
-        for (const auto &msg : _pendingMessageUpdates) {
-            AggregatedTraceViewItem *item = _map.value(makeUniqueKey(msg));
+        for (const auto &entry : _pendingMessageUpdates) {
+            AggregatedTraceViewItem *item = _map.value(makeUniqueKey(entry.msg));
             if (item) {
-                updateItem(msg);
+                updateItem(entry);
                 updatedRows.insert(item->row());
             }
         }
@@ -131,6 +167,9 @@ void AggregatedTraceViewModel::onUpdateModel()
 void AggregatedTraceViewModel::onSetupChanged()
 {
     beginResetModel();
+    _protocolManager.reset();
+    QSettings s;
+    _protocolManager.config().enableUds29Bit = s.value("decoder/uds29Bit", true).toBool();
     for (AggregatedTraceViewItem *item : _map.values()) {
         item->removeChildren();
         const BusMessage &lastMsg = item->_lastmsg;
@@ -159,12 +198,20 @@ void AggregatedTraceViewModel::beforeAppend(int num_messages)
     int start_id = trace->size();
 
     for (int i=start_id; i<start_id + num_messages; i++) {
-        BusMessage msg = trace->getMessage(i);
-        unique_key_t key = makeUniqueKey(msg);
+        PendingMessageEntry entry;
+        entry.msg = trace->getMessage(i);
+
+        ProtocolMessage pmsg;
+        if (_protocolManager.processFrame(entry.msg, pmsg) == DecodeStatus::Completed) {
+            entry.hasProtocolMessage = true;
+            entry.protocolMessage = pmsg;
+        }
+
+        unique_key_t key = makeUniqueKey(entry.msg);
         if (_map.contains(key) || _pendingMessageInserts.contains(key)) {
-            _pendingMessageUpdates.append(msg);
+            _pendingMessageUpdates.append(entry);
         } else {
-            _pendingMessageInserts[key] = msg;
+            _pendingMessageInserts[key] = entry;
         }
     }
 
@@ -176,6 +223,7 @@ void AggregatedTraceViewModel::beforeClear()
     beginResetModel();
     delete _rootItem;
     _map.clear();
+    _protocolManager.reset();
     _rootItem = new AggregatedTraceViewItem(0);
 }
 
@@ -258,6 +306,44 @@ QVariant AggregatedTraceViewModel::data_DisplayRole(const QModelIndex &index, in
     }
 
     if (item->parent() == _rootItem) { // BusMessage row
+        if (item->_hasProtocolMsg) {
+            const ProtocolMessage &pmsg = item->_lastProtocolMsg;
+            switch (index.column()) {
+                case column_type:
+                    if (!pmsg.protocol.isEmpty()) {
+                        return pmsg.protocol.toUpper();
+                    }
+                    break;
+                case column_name:
+                    if (!pmsg.name.isEmpty()) {
+                        return pmsg.name;
+                    }
+                    break;
+                case column_comment:
+                    if (!pmsg.description.isEmpty()) {
+                        return pmsg.description;
+                    }
+                    break;
+                case column_data:
+                {
+                    const QString payload = formatProtocolPayload(pmsg.payload);
+                    if (!payload.isEmpty()) {
+                        return payload;
+                    }
+                    break;
+                }
+                case column_sender:
+                    if (pmsg.protocol.compare(QStringLiteral("uds"), Qt::CaseInsensitive) == 0) {
+                        return (pmsg.type == MessageType::Request) ? tr("Tester") : tr("ECU");
+                    }
+                    if (pmsg.protocol.compare(QStringLiteral("canopen"), Qt::CaseInsensitive) == 0) {
+                        return pmsg.metadata.value(QStringLiteral("Sender")).toString();
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
         return data_DisplayRole_Message(index, role, item->_lastmsg, item->_prevmsg);
     } else { // CanSignal Row
         return data_DisplayRole_Signal(index, role, item->parent()->_lastmsg);
@@ -315,5 +401,4 @@ QVariant AggregatedTraceViewModel::data_TextColorRole(const QModelIndex &index, 
     color.setAlpha(alpha);
     return color;
 }
-
 

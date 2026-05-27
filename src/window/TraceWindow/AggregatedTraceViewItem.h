@@ -23,6 +23,7 @@
 
 #include <sys/time.h>
 #include "core/BusMessage.h"
+#include "decoders/ProtocolTypes.h"
 #include <QList>
 
 class AggregatedTraceViewItem
@@ -42,6 +43,8 @@ public:
     void setRow(int row) { _row = row; }
 
     BusMessage _lastmsg, _prevmsg;
+    ProtocolMessage _lastProtocolMsg;
+    bool _hasProtocolMsg = false;
 
 private:
     AggregatedTraceViewItem *_parent;

@@ -30,6 +30,7 @@
 #include "BaseTraceViewModel.h"
 #include "core/BusMessage.h"
 #include "driver/BusInterface.h"
+#include "decoders/ProtocolManager.h"
 
 #include "AggregatedTraceViewItem.h"
 
@@ -54,23 +55,30 @@ public:
     BusMessage getMessage(const QModelIndex &index) const override;
 
 private:
+    struct PendingMessageEntry {
+        BusMessage msg;
+        bool hasProtocolMessage = false;
+        ProtocolMessage protocolMessage;
+    };
+
     CanIdMap _map;
     AggregatedTraceViewItem *_rootItem;
     QTimer _fadeTimer;
     qint64 _fadeNowMs = 0;
-    QList<BusMessage> _pendingMessageUpdates;
-    QMap<unique_key_t, BusMessage> _pendingMessageInserts;
+    QList<PendingMessageEntry> _pendingMessageUpdates;
+    QMap<unique_key_t, PendingMessageEntry> _pendingMessageInserts;
+    ProtocolManager _protocolManager;
 
     unique_key_t makeUniqueKey(const BusMessage &msg) const;
-    void createItem(const BusMessage &msg, AggregatedTraceViewItem *item, unique_key_t key);
+    void createItem(const PendingMessageEntry &entry);
+    void updateItem(const PendingMessageEntry &entry);
+    static QString formatProtocolPayload(const QByteArray &payload);
 protected:
     QVariant data_DisplayRole(const QModelIndex &index, int role) const override;
     QVariant data_TextColorRole(const QModelIndex &index, int role) const override;
     QVariant data_ChangedBytesRole(const QModelIndex &index) const override;
 
 private slots:
-    void createItem(const BusMessage &msg);
-    void updateItem(const BusMessage &msg);
     void onUpdateModel();
     void onSetupChanged();
 
