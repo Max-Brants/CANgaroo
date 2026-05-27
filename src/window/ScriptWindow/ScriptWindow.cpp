@@ -30,6 +30,8 @@
 #include <QDomDocument>
 #include <QFileInfo>
 #include <QFont>
+#include <QLabel>
+#include <QSpinBox>
 
 #include "core/PythonEngine.h"
 #include "core/Backend.h"
@@ -68,6 +70,59 @@ ScriptWindow::ScriptWindow(QWidget *parent, Backend &backend)
 
     mainLayout->addLayout(toolbar);
 
+    // Quick CANopen SDO controls
+    auto *sdoBar = new QHBoxLayout();
+    sdoBar->addWidget(new QLabel(tr("SDO")));
+    sdoBar->addWidget(new QLabel(tr("IF")));
+    _spinSdoInterface = new QSpinBox(this);
+    _spinSdoInterface->setRange(0, 65535);
+    _spinSdoInterface->setValue(0);
+    sdoBar->addWidget(_spinSdoInterface);
+
+    sdoBar->addWidget(new QLabel(tr("Node")));
+    _spinSdoNode = new QSpinBox(this);
+    _spinSdoNode->setRange(1, 127);
+    _spinSdoNode->setValue(1);
+    sdoBar->addWidget(_spinSdoNode);
+
+    sdoBar->addWidget(new QLabel(tr("Index")));
+    _editSdoIndex = new QLineEdit(this);
+    _editSdoIndex->setPlaceholderText(QStringLiteral("0x2000"));
+    _editSdoIndex->setText(QStringLiteral("0x2000"));
+    _editSdoIndex->setMaximumWidth(90);
+    sdoBar->addWidget(_editSdoIndex);
+
+    sdoBar->addWidget(new QLabel(tr("Sub")));
+    _spinSdoSubIndex = new QSpinBox(this);
+    _spinSdoSubIndex->setRange(0, 255);
+    _spinSdoSubIndex->setValue(0);
+    sdoBar->addWidget(_spinSdoSubIndex);
+
+    sdoBar->addWidget(new QLabel(tr("Value")));
+    _editSdoValue = new QLineEdit(this);
+    _editSdoValue->setPlaceholderText(QStringLiteral("0x0"));
+    _editSdoValue->setText(QStringLiteral("0x0"));
+    _editSdoValue->setMaximumWidth(120);
+    sdoBar->addWidget(_editSdoValue);
+
+    sdoBar->addWidget(new QLabel(tr("Size")));
+    _spinSdoSize = new QSpinBox(this);
+    _spinSdoSize->setRange(0, 4);
+    _spinSdoSize->setSpecialValueText(tr("auto"));
+    _spinSdoSize->setValue(0);
+    _spinSdoSize->setMaximumWidth(75);
+    sdoBar->addWidget(_spinSdoSize);
+
+    _btnSdoRead = new QPushButton(tr("Read"), this);
+    _btnSdoWrite = new QPushButton(tr("Write"), this);
+    _btnSdoDomainUpload = new QPushButton(tr("Domain Upload"), this);
+    sdoBar->addWidget(_btnSdoRead);
+    sdoBar->addWidget(_btnSdoWrite);
+    sdoBar->addWidget(_btnSdoDomainUpload);
+    sdoBar->addStretch();
+
+    mainLayout->addLayout(sdoBar);
+
     // File path display
     _fileLabel = new QLineEdit(this);
     _fileLabel->setReadOnly(true);
@@ -104,6 +159,9 @@ ScriptWindow::ScriptWindow(QWidget *parent, Backend &backend)
     connect(_btnClear, &QPushButton::clicked, this, &ScriptWindow::onClearClicked);
     connect(_btnLoad,  &QPushButton::clicked, this, &ScriptWindow::onLoadClicked);
     connect(_btnSave,  &QPushButton::clicked, this, &ScriptWindow::onSaveClicked);
+    connect(_btnSdoRead, &QPushButton::clicked, this, &ScriptWindow::onSdoReadClicked);
+    connect(_btnSdoWrite, &QPushButton::clicked, this, &ScriptWindow::onSdoWriteClicked);
+    connect(_btnSdoDomainUpload, &QPushButton::clicked, this, &ScriptWindow::onSdoDomainUploadClicked);
     connect(_chkAutoRun, &QCheckBox::toggled, this, [this]() { emit settingsChanged(this); });
 
     connect(_engine, &PythonEngine::scriptOutput,   this, &ScriptWindow::onScriptOutput, Qt::QueuedConnection);
@@ -139,6 +197,9 @@ void ScriptWindow::retranslateUi()
     _btnSave->setText(tr("Save"));
     _chkAutoRun->setText(tr("AutoRun"));
     _chkAutoRun->setToolTip(tr("Start script with measurement"));
+    _btnSdoRead->setText(tr("Read"));
+    _btnSdoWrite->setText(tr("Write"));
+    _btnSdoDomainUpload->setText(tr("Domain Upload"));
 }
 
 void ScriptWindow::onRunClicked()
@@ -232,6 +293,9 @@ void ScriptWindow::onScriptStarted()
     _btnRun->setEnabled(false);
     _btnStop->setEnabled(true);
     _editor->setReadOnly(true);
+    _btnSdoRead->setEnabled(false);
+    _btnSdoWrite->setEnabled(false);
+    _btnSdoDomainUpload->setEnabled(false);
 }
 
 void ScriptWindow::onScriptFinished()
@@ -239,6 +303,9 @@ void ScriptWindow::onScriptFinished()
     _btnRun->setEnabled(true);
     _btnStop->setEnabled(false);
     _editor->setReadOnly(false);
+    _btnSdoRead->setEnabled(true);
+    _btnSdoWrite->setEnabled(true);
+    _btnSdoDomainUpload->setEnabled(true);
 }
 
 void ScriptWindow::onMeasurementStarted()
@@ -257,6 +324,123 @@ void ScriptWindow::onMeasurementStopped()
     {
         _engine->stopScript();
     }
+}
+
+bool ScriptWindow::parseSdoIndex(uint16_t &index) const
+{
+    bool ok = false;
+    const uint32_t parsed = _editSdoIndex->text().trimmed().toUInt(&ok, 0);
+    if (!ok || parsed > 0xFFFFu) { return false; }
+    index = static_cast<uint16_t>(parsed);
+    return true;
+}
+
+bool ScriptWindow::parseSdoValue(uint32_t &value) const
+{
+    bool ok = false;
+    const QString text = _editSdoValue->text().trimmed();
+    const qulonglong parsed = text.toULongLong(&ok, 0);
+    if (!ok || parsed > 0xFFFFFFFFull) { return false; }
+    value = static_cast<uint32_t>(parsed);
+    return true;
+}
+
+void ScriptWindow::runInlineScript(const QString &script)
+{
+    if (_engine->isRunning())
+    {
+        onScriptError(tr("A script is already running.\n"));
+        return;
+    }
+    _engine->runScript(script);
+}
+
+void ScriptWindow::onSdoReadClicked()
+{
+    uint16_t index = 0;
+    if (!parseSdoIndex(index))
+    {
+        onScriptError(tr("Invalid SDO index. Use decimal or hex (for example 0x2000).\n"));
+        return;
+    }
+
+    const int interfaceId = _spinSdoInterface->value();
+    const int nodeId = _spinSdoNode->value();
+    const int subIndex = _spinSdoSubIndex->value();
+
+    const QString script = QString(
+        "import cangaroo\n"
+        "res = cangaroo.sdo_read(node_id=%1, index=%2, sub_index=%3, interface_id=%4, timeout=1.0)\n"
+        "print('SDO read ok: size=' + str(res['size']) + ' raw=0x' + format(res['raw'], 'X') + "
+        "' data=' + res['data'].hex(' '))\n")
+        .arg(nodeId)
+        .arg(index)
+        .arg(subIndex)
+        .arg(interfaceId);
+
+    runInlineScript(script);
+}
+
+void ScriptWindow::onSdoWriteClicked()
+{
+    uint16_t index = 0;
+    if (!parseSdoIndex(index))
+    {
+        onScriptError(tr("Invalid SDO index. Use decimal or hex (for example 0x2000).\n"));
+        return;
+    }
+
+    uint32_t value = 0;
+    if (!parseSdoValue(value))
+    {
+        onScriptError(tr("Invalid SDO value. Use decimal or hex (for example 0x1234).\n"));
+        return;
+    }
+
+    const int interfaceId = _spinSdoInterface->value();
+    const int nodeId = _spinSdoNode->value();
+    const int subIndex = _spinSdoSubIndex->value();
+    const int size = _spinSdoSize->value();
+    const QString sizeExpr = (size == 0) ? QStringLiteral("None") : QString::number(size);
+
+    const QString script = QString(
+        "import cangaroo\n"
+        "res = cangaroo.sdo_write(node_id=%1, index=%2, sub_index=%3, value=%4, size=%5, interface_id=%6, timeout=1.0)\n"
+        "print('SDO write ok: size=' + str(res['size']) + ' raw=0x' + format(res['raw'], 'X'))\n")
+        .arg(nodeId)
+        .arg(index)
+        .arg(subIndex)
+        .arg(value)
+        .arg(sizeExpr)
+        .arg(interfaceId);
+
+    runInlineScript(script);
+}
+
+void ScriptWindow::onSdoDomainUploadClicked()
+{
+    uint16_t index = 0;
+    if (!parseSdoIndex(index))
+    {
+        onScriptError(tr("Invalid SDO index. Use decimal or hex (for example 0x2000).\n"));
+        return;
+    }
+
+    const int interfaceId = _spinSdoInterface->value();
+    const int nodeId = _spinSdoNode->value();
+    const int subIndex = _spinSdoSubIndex->value();
+
+    const QString script = QString(
+        "import cangaroo\n"
+        "res = cangaroo.sdo_read(node_id=%1, index=%2, sub_index=%3, interface_id=%4, timeout=2.0)\n"
+        "print('Domain upload ok: bytes=' + str(res['size']))\n"
+        "print(res['data'].hex(' '))\n")
+        .arg(nodeId)
+        .arg(index)
+        .arg(subIndex)
+        .arg(interfaceId);
+
+    runInlineScript(script);
 }
 
 bool ScriptWindow::saveXML(Backend &backend, QDomDocument &xml, QDomElement &root)

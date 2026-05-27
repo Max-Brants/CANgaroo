@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstring>
+#include <functional>
 
 #include "core/portable_endian.h"
 #include "core/AutosarE2E.h"
@@ -485,8 +486,9 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
              | (static_cast<uint32_t>(msg.getByte(7)) << 24);
     };
 
-    auto waitForSdoResponse = [](uint16_t responseCobId, uint16_t index, uint8_t subIndex,
-                                 double timeoutSec, BusMessage &response) -> bool
+    auto waitForMessage = [](double timeoutSec,
+                             const std::function<bool(const BusMessage &)> &isMatch,
+                             BusMessage &response) -> bool
     {
         if (!g_activeEngine) { return false; }
 
@@ -494,15 +496,6 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         QElapsedTimer timer;
         timer.start();
         const qint64 timeoutMs = static_cast<qint64>(timeoutSec * 1000.0);
-
-        auto isMatch = [responseCobId, index, subIndex](const BusMessage &msg) -> bool
-        {
-            if (msg.busType() != BusType::CAN || msg.isExtended()) { return false; }
-            if (msg.getRawId() != responseCobId || msg.getLength() < 4) { return false; }
-            const uint16_t msgIndex = static_cast<uint16_t>(msg.getByte(1))
-                                    | (static_cast<uint16_t>(msg.getByte(2)) << 8);
-            return (msgIndex == index) && (msg.getByte(3) == subIndex);
-        };
 
         while (!g_activeEngine->stopRequested())
         {
@@ -550,6 +543,30 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         }
 
         return false;
+    };
+
+    auto waitForSdoResponse = [waitForMessage](uint16_t responseCobId, uint16_t index, uint8_t subIndex,
+                                               double timeoutSec, BusMessage &response) -> bool
+    {
+        return waitForMessage(timeoutSec, [responseCobId, index, subIndex](const BusMessage &msg) -> bool
+        {
+            if (msg.busType() != BusType::CAN || msg.isExtended()) { return false; }
+            if (msg.getRawId() != responseCobId || msg.getLength() < 4) { return false; }
+            const uint16_t msgIndex = static_cast<uint16_t>(msg.getByte(1))
+                                    | (static_cast<uint16_t>(msg.getByte(2)) << 8);
+            return (msgIndex == index) && (msg.getByte(3) == subIndex);
+        }, response);
+    };
+
+    auto waitForSdoFrame = [waitForMessage](uint16_t responseCobId, double timeoutSec, BusMessage &response) -> bool
+    {
+        return waitForMessage(timeoutSec, [responseCobId](const BusMessage &msg) -> bool
+        {
+            return msg.busType() == BusType::CAN
+                && !msg.isExtended()
+                && msg.getRawId() == responseCobId
+                && msg.getLength() >= 1;
+        }, response);
     };
 
     // --- CANopen database access ---
@@ -605,7 +622,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         return buildProtocolDict(out);
     }, py::arg("msg"));
 
-    m.def("sdo_read", [waitForSdoResponse, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_read", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
                                                                uint16_t index,
                                                                uint8_t sub_index,
                                                                uint16_t interface_id,
@@ -638,7 +655,15 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
         BusMessage resp;
         const uint16_t responseCobId = static_cast<uint16_t>(0x580u + node_id);
-        if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+        QElapsedTimer totalTimer;
+        totalTimer.start();
+        const auto remainingTimeout = [&totalTimer, timeout]() -> double
+        {
+            const double remaining = timeout - (static_cast<double>(totalTimer.elapsed()) / 1000.0);
+            return remaining > 0.0 ? remaining : 0.0;
+        };
+
+        if (!waitForSdoResponse(responseCobId, index, sub_index, remainingTimeout(), resp)) {
             throw std::runtime_error("timeout waiting for SDO read response");
         }
 
@@ -657,23 +682,99 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
         const bool expedited = (cs & 0x02) != 0;
         const bool sizeIndicated = (cs & 0x01) != 0;
-        if (!expedited) {
-            throw std::runtime_error("segmented SDO upload is not supported");
-        }
+        std::string payload;
 
-        int dataLen = 4;
-        if (sizeIndicated) {
-            dataLen = 4 - static_cast<int>((cs >> 2) & 0x03);
+        if (expedited)
+        {
+            int dataLen = 4;
+            if (sizeIndicated) {
+                dataLen = 4 - static_cast<int>((cs >> 2) & 0x03);
+            }
+            dataLen = qBound(0, dataLen, 4);
+            payload.resize(static_cast<size_t>(dataLen), '\0');
+            for (int i = 0; i < dataLen; ++i)
+            {
+                payload[static_cast<size_t>(i)] = static_cast<char>(resp.getByte(4 + i));
+            }
         }
-        dataLen = qBound(0, dataLen, 4);
+        else
+        {
+            std::optional<uint32_t> expectedSize;
+            if (sizeIndicated && resp.getLength() >= 8)
+            {
+                expectedSize = static_cast<uint32_t>(resp.getByte(4))
+                             | (static_cast<uint32_t>(resp.getByte(5)) << 8)
+                             | (static_cast<uint32_t>(resp.getByte(6)) << 16)
+                             | (static_cast<uint32_t>(resp.getByte(7)) << 24);
+                payload.reserve(static_cast<size_t>(*expectedSize));
+            }
+
+            bool toggle = false;
+            bool done = false;
+            while (!done)
+            {
+                BusMessage segReq;
+                segReq.setRawId(static_cast<uint32_t>(0x600u + node_id));
+                segReq.setLength(8);
+                segReq.setByte(0, static_cast<uint8_t>(0x60u | (toggle ? 0x10u : 0x00u)));
+                segReq.setByte(1, 0);
+                segReq.setByte(2, 0);
+                segReq.setByte(3, 0);
+                segReq.setByte(4, 0);
+                segReq.setByte(5, 0);
+                segReq.setByte(6, 0);
+                segReq.setByte(7, 0);
+                intf->sendMessage(segReq);
+
+                BusMessage segResp;
+                if (!waitForSdoFrame(responseCobId, remainingTimeout(), segResp)) {
+                    throw std::runtime_error("timeout waiting for SDO upload segment");
+                }
+
+                const uint8_t segCs = segResp.getByte(0);
+                if (segCs == 0x80)
+                {
+                    const uint32_t abortCode = parseSdoAbortCode(segResp);
+                    throw std::runtime_error(QString("SDO read aborted (0x%1)")
+                                             .arg(abortCode, 8, 16, QChar('0'))
+                                             .toStdString());
+                }
+
+                if ((segCs & 0xE0) != 0x00) {
+                    throw std::runtime_error("unexpected SDO upload segment response");
+                }
+
+                const bool responseToggle = (segCs & 0x10) != 0;
+                if (responseToggle != toggle) {
+                    throw std::runtime_error("SDO upload toggle mismatch");
+                }
+
+                const int unusedBytes = static_cast<int>((segCs >> 1) & 0x07);
+                if (unusedBytes > 7) {
+                    throw std::runtime_error("invalid SDO upload segment size");
+                }
+                const int payloadBytes = 7 - unusedBytes;
+                const int availableBytes = qMax(0, static_cast<int>(segResp.getLength()) - 1);
+                const int copyBytes = qMin(payloadBytes, availableBytes);
+                for (int i = 0; i < copyBytes; ++i)
+                {
+                    payload.push_back(static_cast<char>(segResp.getByte(1 + i)));
+                }
+
+                done = (segCs & 0x01) != 0;
+                toggle = !toggle;
+            }
+
+            if (expectedSize.has_value() && payload.size() > static_cast<size_t>(*expectedSize)) {
+                payload.resize(static_cast<size_t>(*expectedSize));
+            }
+        }
 
         uint32_t raw = 0;
-        std::string payload(static_cast<size_t>(dataLen), '\0');
-        for (int i = 0; i < dataLen; ++i)
+        const int rawBytes = qMin(4, static_cast<int>(payload.size()));
+        for (int i = 0; i < rawBytes; ++i)
         {
-            const uint8_t b = resp.getByte(4 + i);
-            payload[static_cast<size_t>(i)] = static_cast<char>(b);
-            raw |= static_cast<uint32_t>(b) << (8 * i);
+            raw |= static_cast<uint32_t>(static_cast<uint8_t>(payload[static_cast<size_t>(i)])) << (8 * i);
         }
 
         py::dict result;
@@ -681,7 +782,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         result["index"] = index;
         result["sub_index"] = sub_index;
         result["raw"] = raw;
-        result["size"] = dataLen;
+        result["size"] = static_cast<int>(payload.size());
         result["data"] = py::bytes(payload);
         return result;
     },

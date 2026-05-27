@@ -2,7 +2,7 @@
 CANopen SDO read/write example.
 
 Demonstrates:
-  - cangaroo.sdo_read()   — read an object value via expedited SDO upload
+  - cangaroo.sdo_read()   — read an object value via expedited or segmented/domain SDO upload
   - cangaroo.sdo_write()  — write an object value via expedited SDO download
 
 Adjust INTERFACE_ID, NODE_ID, INDEX, and SUB_INDEX for your device.
@@ -30,6 +30,9 @@ print(
     f"Read ok: raw=0x{value['raw']:X}, size={value['size']} bytes, "
     f"data={value['data'].hex(' ')}"
 )
+
+if value["size"] > 4:
+    print("Domain/segmented upload detected.")
 
 new_value = value["raw"]
 print(f"\nWriting back same value 0x{new_value:X}...")
