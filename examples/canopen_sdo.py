@@ -34,15 +34,18 @@ print(
 if value["size"] > 4:
     print("Domain/segmented upload detected.")
 
-new_value = value["raw"]
-print(f"\nWriting back same value 0x{new_value:X}...")
-result = cangaroo.sdo_write(
-    node_id=NODE_ID,
-    index=INDEX,
-    sub_index=SUB_INDEX,
-    value=new_value,
-    size=value["size"],
-    interface_id=INTERFACE_ID,
-    timeout=1.0,
-)
-print(f"Write ok: {result['ok']}")
+if value["size"] <= 4:
+    new_value = value["raw"]
+    print(f"\nWriting back same value 0x{new_value:X}...")
+    result = cangaroo.sdo_write(
+        node_id=NODE_ID,
+        index=INDEX,
+        sub_index=SUB_INDEX,
+        value=new_value,
+        size=value["size"],
+        interface_id=INTERFACE_ID,
+        timeout=1.0,
+    )
+    print(f"Write ok: {result['ok']}")
+else:
+    print("\nSkipping write-back for domain/segmented upload values larger than 4 bytes.")
