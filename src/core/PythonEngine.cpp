@@ -6,6 +6,7 @@
 
 #include "PythonEngine.h"
 
+#include <array>
 #include <cstring>
 
 #include "core/portable_endian.h"
@@ -13,6 +14,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QMutexLocker>
@@ -474,6 +476,82 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         return d;
     };
 
+    auto parseSdoAbortCode = [](const BusMessage &msg) -> uint32_t
+    {
+        if (msg.getLength() < 8) { return 0; }
+        return static_cast<uint32_t>(msg.getByte(4))
+             | (static_cast<uint32_t>(msg.getByte(5)) << 8)
+             | (static_cast<uint32_t>(msg.getByte(6)) << 16)
+             | (static_cast<uint32_t>(msg.getByte(7)) << 24);
+    };
+
+    auto waitForSdoResponse = [](uint16_t responseCobId, uint16_t index, uint8_t subIndex,
+                                 double timeoutSec, BusMessage &response) -> bool
+    {
+        if (!g_activeEngine) { return false; }
+
+        if (timeoutSec < 0.0) { timeoutSec = 0.0; }
+        QElapsedTimer timer;
+        timer.start();
+        const qint64 timeoutMs = static_cast<qint64>(timeoutSec * 1000.0);
+
+        auto isMatch = [responseCobId, index, subIndex](const BusMessage &msg) -> bool
+        {
+            if (msg.busType() != BusType::CAN || msg.isExtended()) { return false; }
+            if (msg.getRawId() != responseCobId || msg.getLength() < 4) { return false; }
+            const uint16_t msgIndex = static_cast<uint16_t>(msg.getByte(1))
+                                    | (static_cast<uint16_t>(msg.getByte(2)) << 8);
+            return (msgIndex == index) && (msg.getByte(3) == subIndex);
+        };
+
+        while (!g_activeEngine->stopRequested())
+        {
+            if (timeoutMs >= 0 && timer.elapsed() > timeoutMs) {
+                return false;
+            }
+
+            bool found = false;
+            {
+                py::gil_scoped_release release;
+                QMutexLocker lock(&g_activeEngine->msgQueueMutex());
+                QQueue<BusMessage> &queue = g_activeEngine->msgQueue();
+
+                if (queue.isEmpty())
+                {
+                    qint64 remaining = timeoutMs >= 0 ? qMax<qint64>(0, timeoutMs - timer.elapsed()) : 50;
+                    unsigned long waitMs = static_cast<unsigned long>(qMin<qint64>(50, remaining));
+                    if (waitMs > 0) {
+                        g_activeEngine->msgQueueCondition().wait(&g_activeEngine->msgQueueMutex(), waitMs);
+                    }
+                }
+
+                QQueue<BusMessage> keep;
+                while (!queue.isEmpty())
+                {
+                    BusMessage msg = queue.dequeue();
+                    if (!found && isMatch(msg))
+                    {
+                        response = msg;
+                        found = true;
+                    }
+                    else
+                    {
+                        keep.enqueue(msg);
+                    }
+                }
+
+                while (!keep.isEmpty())
+                {
+                    queue.enqueue(keep.dequeue());
+                }
+            }
+
+            if (found) { return true; }
+        }
+
+        return false;
+    };
+
     // --- CANopen database access ---
 
     m.def("canopen_databases", []() -> py::list
@@ -526,6 +604,211 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         }
         return buildProtocolDict(out);
     }, py::arg("msg"));
+
+    m.def("sdo_read", [waitForSdoResponse, parseSdoAbortCode](uint8_t node_id,
+                                                               uint16_t index,
+                                                               uint8_t sub_index,
+                                                               uint16_t interface_id,
+                                                               double timeout) -> py::dict
+    {
+        if (!g_activeEngine) {
+            throw std::runtime_error("no active engine");
+        }
+        if (node_id == 0 || node_id > 127) {
+            throw py::value_error("node_id must be in range 1..127");
+        }
+
+        BusInterface *intf = g_activeEngine->backend().getInterfaceById(interface_id);
+        if (!intf) {
+            throw py::value_error("invalid interface_id");
+        }
+
+        BusMessage req;
+        req.setRawId(static_cast<uint32_t>(0x600u + node_id));
+        req.setLength(8);
+        req.setByte(0, 0x40); // Initiate upload request
+        req.setByte(1, static_cast<uint8_t>(index & 0xFF));
+        req.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
+        req.setByte(3, sub_index);
+        req.setByte(4, 0);
+        req.setByte(5, 0);
+        req.setByte(6, 0);
+        req.setByte(7, 0);
+        intf->sendMessage(req);
+
+        BusMessage resp;
+        const uint16_t responseCobId = static_cast<uint16_t>(0x580u + node_id);
+        if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+            throw std::runtime_error("timeout waiting for SDO read response");
+        }
+
+        const uint8_t cs = resp.getByte(0);
+        if (cs == 0x80)
+        {
+            const uint32_t abortCode = parseSdoAbortCode(resp);
+            throw std::runtime_error(QString("SDO read aborted (0x%1)")
+                                     .arg(abortCode, 8, 16, QChar('0'))
+                                     .toStdString());
+        }
+
+        if ((cs & 0xE0) != 0x40) {
+            throw std::runtime_error("unexpected SDO read response");
+        }
+
+        const bool expedited = (cs & 0x02) != 0;
+        const bool sizeIndicated = (cs & 0x01) != 0;
+        if (!expedited) {
+            throw std::runtime_error("segmented SDO upload is not supported");
+        }
+
+        int dataLen = 4;
+        if (sizeIndicated) {
+            dataLen = 4 - static_cast<int>((cs >> 2) & 0x03);
+        }
+        dataLen = qBound(0, dataLen, 4);
+
+        uint32_t raw = 0;
+        std::string payload(static_cast<size_t>(dataLen), '\0');
+        for (int i = 0; i < dataLen; ++i)
+        {
+            const uint8_t b = resp.getByte(4 + i);
+            payload[static_cast<size_t>(i)] = static_cast<char>(b);
+            raw |= static_cast<uint32_t>(b) << (8 * i);
+        }
+
+        py::dict result;
+        result["node_id"] = node_id;
+        result["index"] = index;
+        result["sub_index"] = sub_index;
+        result["raw"] = raw;
+        result["size"] = dataLen;
+        result["data"] = py::bytes(payload);
+        return result;
+    },
+    py::arg("node_id"),
+    py::arg("index"),
+    py::arg("sub_index") = 0,
+    py::arg("interface_id") = 0,
+    py::arg("timeout") = 1.0);
+
+    m.def("sdo_write", [waitForSdoResponse, parseSdoAbortCode](uint8_t node_id,
+                                                                uint16_t index,
+                                                                uint8_t sub_index,
+                                                                py::object value,
+                                                                py::object size,
+                                                                uint16_t interface_id,
+                                                                double timeout) -> py::dict
+    {
+        if (!g_activeEngine) {
+            throw std::runtime_error("no active engine");
+        }
+        if (node_id == 0 || node_id > 127) {
+            throw py::value_error("node_id must be in range 1..127");
+        }
+
+        BusInterface *intf = g_activeEngine->backend().getInterfaceById(interface_id);
+        if (!intf) {
+            throw py::value_error("invalid interface_id");
+        }
+
+        std::array<uint8_t, 4> payload = {0, 0, 0, 0};
+        int payloadSize = 0;
+        uint32_t rawValue = 0;
+
+        if (py::isinstance<py::bytes>(value) || py::isinstance<py::bytearray>(value))
+        {
+            std::string bytes = py::bytes(value);
+            payloadSize = static_cast<int>(bytes.size());
+            if (payloadSize < 1 || payloadSize > 4) {
+                throw py::value_error("bytes value length must be in range 1..4");
+            }
+            for (int i = 0; i < payloadSize; ++i) {
+                payload[static_cast<size_t>(i)] = static_cast<uint8_t>(bytes[static_cast<size_t>(i)]);
+                rawValue |= static_cast<uint32_t>(payload[static_cast<size_t>(i)]) << (8 * i);
+            }
+        }
+        else
+        {
+            const uint64_t raw64 = value.cast<uint64_t>();
+            if (raw64 > 0xFFFFFFFFULL) {
+                throw py::value_error("integer value must fit into 32 bits");
+            }
+            rawValue = static_cast<uint32_t>(raw64);
+
+            if (size.is_none()) {
+                payloadSize = (rawValue <= 0xFFu) ? 1
+                            : (rawValue <= 0xFFFFu) ? 2
+                            : (rawValue <= 0xFFFFFFu) ? 3
+                            : 4;
+            } else {
+                payloadSize = size.cast<int>();
+            }
+
+            if (payloadSize < 1 || payloadSize > 4) {
+                throw py::value_error("size must be in range 1..4");
+            }
+
+            if (payloadSize < 4)
+            {
+                const uint32_t maxValue = (1u << (payloadSize * 8)) - 1u;
+                if (rawValue > maxValue) {
+                    throw py::value_error("integer value does not fit requested size");
+                }
+            }
+
+            for (int i = 0; i < payloadSize; ++i) {
+                payload[static_cast<size_t>(i)] = static_cast<uint8_t>((rawValue >> (8 * i)) & 0xFFu);
+            }
+        }
+
+        BusMessage req;
+        req.setRawId(static_cast<uint32_t>(0x600u + node_id));
+        req.setLength(8);
+        req.setByte(0, static_cast<uint8_t>(0x23 | ((4 - payloadSize) << 2))); // Expedited download
+        req.setByte(1, static_cast<uint8_t>(index & 0xFF));
+        req.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
+        req.setByte(3, sub_index);
+        req.setByte(4, payload[0]);
+        req.setByte(5, payload[1]);
+        req.setByte(6, payload[2]);
+        req.setByte(7, payload[3]);
+        intf->sendMessage(req);
+
+        BusMessage resp;
+        const uint16_t responseCobId = static_cast<uint16_t>(0x580u + node_id);
+        if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+            throw std::runtime_error("timeout waiting for SDO write response");
+        }
+
+        const uint8_t cs = resp.getByte(0);
+        if (cs == 0x80)
+        {
+            const uint32_t abortCode = parseSdoAbortCode(resp);
+            throw std::runtime_error(QString("SDO write aborted (0x%1)")
+                                     .arg(abortCode, 8, 16, QChar('0'))
+                                     .toStdString());
+        }
+
+        if (cs != 0x60) {
+            throw std::runtime_error("unexpected SDO write response");
+        }
+
+        py::dict result;
+        result["node_id"] = node_id;
+        result["index"] = index;
+        result["sub_index"] = sub_index;
+        result["raw"] = rawValue;
+        result["size"] = payloadSize;
+        result["ok"] = true;
+        return result;
+    },
+    py::arg("node_id"),
+    py::arg("index"),
+    py::arg("sub_index"),
+    py::arg("value"),
+    py::arg("size") = py::none(),
+    py::arg("interface_id") = 0,
+    py::arg("timeout") = 1.0);
 
     // --- DBC / database access ---
 

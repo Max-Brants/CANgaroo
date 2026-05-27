@@ -25,7 +25,7 @@
 *   **Powerful Data Visualization**: Integrated Graphing tools supporting Time-series, Scatter charts, Text-based monitoring, and interactive Gauge views with zoom and live tooltips. Supports both CAN and LIN signals.
 *   **Advanced Filtering & Logging**: Isolate critical data with live filters and export captures for offline analysis.
 *   **Network Rights Management**: Per-network access control for bus interfaces.
-*   **Python Scripting**: Built-in script editor with an embedded Python interpreter (via pybind11). Send and receive CAN and LIN messages, decode signals using loaded DBC/LDF files, and automate tasks. Scripts can be started manually or automatically with the measurement. Ready-to-use example scripts are included in the `examples/` directory.
+*   **Python Scripting**: Built-in script editor with an embedded Python interpreter (via pybind11). Send and receive CAN and LIN messages, decode signals using loaded DBC/LDF files, perform CANopen SDO object read/write requests, and automate tasks. Scripts can be started manually or automatically with the measurement. Ready-to-use example scripts are included in the `examples/` directory.
 *   **Basic CANopen Trace Decoding**: Decode CANopen NMT, SYNC, TIME, EMCY, heartbeat, SDO, and PDO frames in the live trace, with EDS-backed object names where available.
 *   **CAN Gateway**: Forward messages between two CAN interfaces with configurable per-message filter rules. Active during a running measurement.
 *   **LIN Control**: Send LIN Sleep/Wakeup commands to connected LIN-capable interfaces directly from the UI.
