@@ -79,6 +79,7 @@ public slots:
     QDockWidget *addStatusWidget(QMainWindow *parent = nullptr);
     QDockWidget *addTxGeneratorWidget(QMainWindow *parent = nullptr);
     QDockWidget *addScriptWidget(QMainWindow *parent = nullptr);
+    QDockWidget *addSdoWidget(QMainWindow *parent = nullptr);
     QDockWidget *addReplayWidget(QMainWindow *parent = nullptr);
     QDockWidget *addLinControlWidget(QMainWindow *parent = nullptr);
     QDockWidget *addGpioControlWidget(QMainWindow *parent = nullptr);

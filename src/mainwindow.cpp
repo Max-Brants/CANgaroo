@@ -48,6 +48,7 @@
 #include "window/RawTxWindow/RawTxWindow.h"
 #include "window/TxGeneratorWindow/TxGeneratorWindow.h"
 #include "window/ScriptWindow/ScriptWindow.h"
+#include "window/SdoWindow/SdoWindow.h"
 #include "window/ReplayWindow/ReplayWindow.h"
 #include "window/LinControlWindow/LinControlWindow.h"
 #include "window/GpioControlWindow/GpioControlWindow.h"
@@ -136,6 +137,7 @@ void MainWindow::initActions()
     connect(ui->actionTransmit_View, &QAction::triggered, this, [this]() { addRawTxWidget(); });
     connect(ui->actionGenerator_View, &QAction::triggered, this, [this]() { addTxGeneratorWidget(); });
     connect(ui->actionScript_View, &QAction::triggered, this, [this]() { addScriptWidget(); });
+    connect(ui->actionSDO_View, &QAction::triggered, this, [this]() { addSdoWidget(); });
     connect(ui->actionReplay_View, &QAction::triggered, this, [this]() { addReplayWidget(); });
     connect(ui->actionLin_Control_View, &QAction::triggered, this, [this]() { addLinControlWidget(); });
     connect(ui->actionGpio_Control_View, &QAction::triggered, this, [this]() { addGpioControlWidget(); });
@@ -512,6 +514,11 @@ bool MainWindow::loadWorkspaceTab(QDomElement el)
         if (script && !scriptEl.isNull())
             script->loadXML(backend(), scriptEl);
 
+        SdoWindow *sdo = mw->findChild<SdoWindow *>();
+        QDomElement sdoEl = el.firstChildElement("sdowindow");
+        if (sdo && !sdoEl.isNull())
+            sdo->loadXML(backend(), sdoEl);
+
         // Restore dock layout state (splits, tabification, sizes).
         // Deferred so it runs after the default layout timer from createTraceWindow().
         const QString dockState = el.attribute("dockstate");
@@ -648,6 +655,14 @@ bool MainWindow::saveWorkspaceToFile(const QString &filename)
             QDomElement scriptEl = doc.createElement("scriptwindow");
             script->saveXML(backend(), doc, scriptEl);
             tabEl.appendChild(scriptEl);
+        }
+
+        SdoWindow *sdo = w->findChild<SdoWindow *>();
+        if (sdo)
+        {
+            QDomElement sdoEl = doc.createElement("sdowindow");
+            sdo->saveXML(backend(), doc, sdoEl);
+            tabEl.appendChild(sdoEl);
         }
 
         tabsRoot.appendChild(tabEl);
@@ -795,6 +810,7 @@ QMainWindow *MainWindow::createTraceWindow(const QString &title)
     QDockWidget *dockGeneratorWidget = addTxGeneratorWidget(mm);
     QDockWidget *dockGraphWidget    = addGraphWidget(mm);
     QDockWidget *dockScriptWidget   = addScriptWidget(mm);
+    QDockWidget *dockSdoWidget      = addSdoWidget(mm);
     QDockWidget *dockReplayWidget   = addReplayWidget(mm);
 
     auto *gen = qobject_cast<TxGeneratorWindow *>(dockGeneratorWidget->widget());
@@ -806,25 +822,27 @@ QMainWindow *MainWindow::createTraceWindow(const QString &title)
     mm->splitDockWidget(dockGeneratorWidget, dockLogWidget, Qt::Horizontal);
     mm->splitDockWidget(dockGraphWidget, dockLogWidget, Qt::Horizontal);
     mm->splitDockWidget(dockScriptWidget, dockLogWidget, Qt::Horizontal);
+    mm->splitDockWidget(dockSdoWidget, dockLogWidget, Qt::Horizontal);
     mm->splitDockWidget(dockReplayWidget, dockLogWidget, Qt::Horizontal);
     mm->tabifyDockWidget(dockGeneratorWidget, dockGraphWidget);
     mm->tabifyDockWidget(dockGraphWidget, dockScriptWidget);
-    mm->tabifyDockWidget(dockScriptWidget, dockReplayWidget);
+    mm->tabifyDockWidget(dockScriptWidget, dockSdoWidget);
+    mm->tabifyDockWidget(dockSdoWidget, dockReplayWidget);
     mm->splitDockWidget(dockStatusWidget, dockLogWidget, Qt::Horizontal);
     mm->tabifyDockWidget(dockStatusWidget, dockLogWidget);
 
     // Deferred resize so it runs after the event loop settles.
-    QTimer::singleShot(0, mm, [mm, dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockReplayWidget]()
+    QTimer::singleShot(0, mm, [mm, dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockSdoWidget, dockReplayWidget]()
     {
         dockStatusWidget->show();
         dockStatusWidget->raise();
         dockGeneratorWidget->show();
         dockGeneratorWidget->raise();
 
-        mm->resizeDocks({dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockReplayWidget},
-                        {600, 600, 600, 600, 600}, Qt::Vertical);
-        mm->resizeDocks({dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockReplayWidget},
-                        {1200, 1200, 1200, 1200, 1200}, Qt::Horizontal);
+        mm->resizeDocks({dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockSdoWidget, dockReplayWidget},
+                        {600, 600, 600, 600, 600, 600}, Qt::Vertical);
+        mm->resizeDocks({dockLogWidget, dockGeneratorWidget, dockStatusWidget, dockScriptWidget, dockSdoWidget, dockReplayWidget},
+                        {1200, 1200, 1200, 1200, 1200, 1200}, Qt::Horizontal);
     });
 
     ui->mainTabs->setCurrentWidget(mm);
@@ -936,6 +954,16 @@ QDockWidget *MainWindow::addScriptWidget(QMainWindow *parent)
     auto *dock = makeDock(tr("Python Script"), QStringLiteral("dock_script"), scriptWindow, parent);
     if (dock)
         connect(scriptWindow, &ConfigurableWidget::settingsChanged,
+                this, [this]() { setWorkspaceModified(true); });
+    return dock;
+}
+
+QDockWidget *MainWindow::addSdoWidget(QMainWindow *parent)
+{
+    auto *sdoWindow = new SdoWindow(nullptr, backend());
+    auto *dock = makeDock(tr("SDO View"), QStringLiteral("dock_sdo"), sdoWindow, parent);
+    if (dock)
+        connect(sdoWindow, &ConfigurableWidget::settingsChanged,
                 this, [this]() { setWorkspaceModified(true); });
     return dock;
 }
