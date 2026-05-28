@@ -58,7 +58,8 @@ private:
     Backend &_backend;
 
     struct PyInterpreterHolder;
-    std::unique_ptr<PyInterpreterHolder> _pyInterp;
+    static std::shared_ptr<PyInterpreterHolder> sharedInterpreter();
+    std::shared_ptr<PyInterpreterHolder> _pyInterp;
     QString _initError;
 
     std::unique_ptr<std::thread> _workerThread;

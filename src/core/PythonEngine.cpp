@@ -1358,13 +1358,28 @@ struct PythonEngine::PyInterpreterHolder
 };
 #pragma GCC diagnostic pop
 
+std::shared_ptr<PythonEngine::PyInterpreterHolder> PythonEngine::sharedInterpreter()
+{
+    static QMutex mutex;
+    static std::weak_ptr<PyInterpreterHolder> shared;
+
+    QMutexLocker locker(&mutex);
+    std::shared_ptr<PyInterpreterHolder> interp = shared.lock();
+    if (!interp)
+    {
+        interp = std::make_shared<PyInterpreterHolder>();
+        shared = interp;
+    }
+    return interp;
+}
+
 PythonEngine::PythonEngine(Backend &backend, QObject *parent)
     : QObject(parent)
     , _backend(backend)
 {
     try
     {
-        _pyInterp = std::make_unique<PyInterpreterHolder>();
+        _pyInterp = sharedInterpreter();
     }
     catch (const std::exception &e)
     {
