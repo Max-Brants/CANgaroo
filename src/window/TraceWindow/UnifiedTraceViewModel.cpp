@@ -23,7 +23,7 @@ UnifiedTraceViewModel::UnifiedTraceViewModel(Backend &backend, Category category
     m_previousRowTimestamp = 0;
     m_globalIndexCounter = 1;
 
-    m_processTimer.setInterval(150);
+    m_processTimer.setInterval(50);
     m_processTimer.setSingleShot(true);
     connect(&m_processTimer, &QTimer::timeout, this, &UnifiedTraceViewModel::processNewMessages);
 

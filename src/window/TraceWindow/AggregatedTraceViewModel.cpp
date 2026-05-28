@@ -234,11 +234,19 @@ void AggregatedTraceViewModel::afterClear()
 
 AggregatedTraceViewModel::unique_key_t AggregatedTraceViewModel::makeUniqueKey(const BusMessage &msg) const
 {
-    // Bit 63: RX flag; bits 32-47: interface ID; bit 30: bus type (1=LIN); bits 0-29: frame ID
+    // Build a stable key that keeps frame-format variants separate so rows don't overwrite each other.
+    // [63] RX, [62:47] interface, [46] bus type (LIN), [45] extended, [44] RTR,
+    // [43] FD, [42] BRS, [41] LIN sleep, [40] LIN wakeup, [39:29] reserved, [28:0] raw CAN/LIN id.
     return  static_cast<uint64_t>(msg.isRX()) << 63
-          | static_cast<uint64_t>(msg.getInterfaceId()) << 32
-          | static_cast<uint64_t>(static_cast<uint8_t>(msg.busType())) << 30
-          | (static_cast<uint64_t>(msg.getRawId()) & 0x3FFFFFFFull);
+          | (static_cast<uint64_t>(msg.getInterfaceId()) & 0xFFFFull) << 47
+          | static_cast<uint64_t>(msg.busType() == BusType::LIN) << 46
+          | static_cast<uint64_t>(msg.isExtended()) << 45
+          | static_cast<uint64_t>(msg.isRTR()) << 44
+          | static_cast<uint64_t>(msg.isFD()) << 43
+          | static_cast<uint64_t>(msg.isBRS()) << 42
+          | static_cast<uint64_t>(msg.isLinSleepFrame()) << 41
+          | static_cast<uint64_t>(msg.isLinWakeupFrame()) << 40
+          | (static_cast<uint64_t>(msg.getRawId()) & 0x1FFFFFFFull);
 }
 
 QModelIndex AggregatedTraceViewModel::index(int row, int column, const QModelIndex &parent) const
@@ -401,4 +409,3 @@ QVariant AggregatedTraceViewModel::data_TextColorRole(const QModelIndex &index, 
     color.setAlpha(alpha);
     return color;
 }
-
