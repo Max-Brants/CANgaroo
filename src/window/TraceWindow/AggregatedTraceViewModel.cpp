@@ -236,7 +236,7 @@ AggregatedTraceViewModel::unique_key_t AggregatedTraceViewModel::makeUniqueKey(c
 {
     // Build a stable key that keeps frame-format variants separate so rows don't overwrite each other.
     // [63] RX, [62:47] interface, [46] bus type (LIN), [45] extended, [44] RTR,
-    // [43] FD, [42] BRS, [41] LIN sleep, [40] LIN wakeup, [39:29] reserved, [28:0] raw CAN/LIN id.
+    // [43] FD, [42] BRS, [41] LIN sleep, [40] LIN wakeup, [28:0] raw CAN/LIN id.
     return  static_cast<uint64_t>(msg.isRX()) << 63
           | (static_cast<uint64_t>(msg.getInterfaceId()) & 0xFFFFull) << 47
           | static_cast<uint64_t>(msg.busType() == BusType::LIN) << 46
