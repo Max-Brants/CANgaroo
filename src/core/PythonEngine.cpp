@@ -1360,15 +1360,19 @@ struct PythonEngine::PyInterpreterHolder
 
 std::shared_ptr<PythonEngine::PyInterpreterHolder> PythonEngine::sharedInterpreter()
 {
-    static QMutex mutex;
-    static std::weak_ptr<PyInterpreterHolder> shared;
+    struct SharedInterpreterState
+    {
+        QMutex mutex;
+        std::weak_ptr<PyInterpreterHolder> shared;
+    };
+    static SharedInterpreterState state;
 
-    QMutexLocker locker(&mutex);
-    std::shared_ptr<PyInterpreterHolder> interp = shared.lock();
+    QMutexLocker locker(&state.mutex);
+    std::shared_ptr<PyInterpreterHolder> interp = state.shared.lock();
     if (!interp)
     {
         interp = std::make_shared<PyInterpreterHolder>();
-        shared = interp;
+        state.shared = interp;
     }
     return interp;
 }
