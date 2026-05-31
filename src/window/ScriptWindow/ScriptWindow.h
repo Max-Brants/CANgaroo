@@ -28,7 +28,6 @@ class QPushButton;
 class QCheckBox;
 class QLineEdit;
 class QSplitter;
-class QSpinBox;
 
 class ScriptWindow : public ConfigurableWidget
 {
@@ -56,9 +55,6 @@ private slots:
     void onScriptFinished();
     void onMeasurementStarted();
     void onMeasurementStopped();
-    void onSdoReadClicked();
-    void onSdoWriteClicked();
-    void onSdoDomainUploadClicked();
 
 private:
     Backend *_backend;
@@ -72,23 +68,11 @@ private:
     QPushButton *_btnClear;
     QPushButton *_btnLoad;
     QPushButton *_btnSave;
-    QPushButton *_btnSdoRead;
-    QPushButton *_btnSdoWrite;
-    QPushButton *_btnSdoDomainUpload;
     QCheckBox *_chkAutoRun;
     QLineEdit *_fileLabel;
-    QSpinBox *_spinSdoInterface;
-    QSpinBox *_spinSdoNode;
-    QLineEdit *_editSdoIndex;
-    QSpinBox *_spinSdoSubIndex;
-    QLineEdit *_editSdoValue;
-    QSpinBox *_spinSdoSize;
     QString _scriptFilePath;
     QDateTime _lastLoadTime;
 
     void loadScriptFile(const QString &filename);
     void reloadIfModified();
-    bool parseSdoIndex(uint16_t &index) const;
-    bool parseSdoValue(uint32_t &value) const;
-    void runInlineScript(const QString &script);
 };
