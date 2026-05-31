@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -102,6 +103,12 @@ bool isHexType(const CanOpenObjectEntry &entry)
 bool isDomainType(const CanOpenObjectEntry &entry)
 {
     return entry.dataType == 0x000F;
+}
+
+QString jsonQuoted(const QByteArray &value)
+{
+    const QJsonArray values { QString::fromLatin1(value.toBase64()) };
+    return QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact)).mid(1).chopped(1);
 }
 
 int byteWidth(const CanOpenObjectEntry &entry)

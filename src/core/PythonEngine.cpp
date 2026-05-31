@@ -792,7 +792,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("interface_id") = 0,
     py::arg("timeout") = 1.0);
 
-    m.def("sdo_write", [waitForSdoResponse, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_write", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
                                                                 uint16_t index,
                                                                 uint8_t sub_index,
                                                                 py::object value,
