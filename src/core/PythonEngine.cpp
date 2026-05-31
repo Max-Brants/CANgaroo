@@ -792,7 +792,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("interface_id") = 0,
     py::arg("timeout") = 1.0);
 
-    m.def("sdo_write", [waitForSdoResponse, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_write", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
                                                                 uint16_t index,
                                                                 uint8_t sub_index,
                                                                 py::object value,
@@ -812,20 +812,24 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             throw py::value_error("invalid interface_id");
         }
 
-        std::array<uint8_t, 4> payload = {0, 0, 0, 0};
+        QByteArray payload;
         int payloadSize = 0;
         uint32_t rawValue = 0;
+        const bool bytesValue = py::isinstance<py::bytes>(value) || py::isinstance<py::bytearray>(value);
 
-        if (py::isinstance<py::bytes>(value) || py::isinstance<py::bytearray>(value))
+        if (bytesValue)
         {
             std::string bytes = py::bytes(value);
-            payloadSize = static_cast<int>(bytes.size());
-            if (payloadSize < 1 || payloadSize > 4) {
-                throw py::value_error("bytes value length must be in range 1..4");
+            payload = QByteArray(bytes.data(), static_cast<int>(bytes.size()));
+            payloadSize = payload.size();
+            if (!size.is_none()) {
+                const int requestedSize = size.cast<int>();
+                if (requestedSize != payloadSize) {
+                    throw py::value_error("size must match bytes value length");
+                }
             }
-            for (int i = 0; i < payloadSize; ++i) {
-                payload[static_cast<size_t>(i)] = static_cast<uint8_t>(bytes[static_cast<size_t>(i)]);
-                rawValue |= static_cast<uint32_t>(payload[static_cast<size_t>(i)]) << (8 * i);
+            for (int i = 0; i < qMin(4, payloadSize); ++i) {
+                rawValue |= static_cast<uint32_t>(static_cast<uint8_t>(payload.at(i))) << (8 * i);
             }
         }
         else
@@ -857,41 +861,117 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                 }
             }
 
+            payload.resize(payloadSize);
             for (int i = 0; i < payloadSize; ++i) {
-                payload[static_cast<size_t>(i)] = static_cast<uint8_t>((rawValue >> (8 * i)) & 0xFFu);
+                payload[i] = static_cast<char>((rawValue >> (8 * i)) & 0xFFu);
             }
         }
 
-        BusMessage req;
-        req.setRawId(static_cast<uint32_t>(0x600u + node_id));
-        req.setLength(8);
-        req.setByte(0, static_cast<uint8_t>(0x23 | ((4 - payloadSize) << 2))); // Expedited download
-        req.setByte(1, static_cast<uint8_t>(index & 0xFF));
-        req.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
-        req.setByte(3, sub_index);
-        req.setByte(4, payload[0]);
-        req.setByte(5, payload[1]);
-        req.setByte(6, payload[2]);
-        req.setByte(7, payload[3]);
-        intf->sendMessage(req);
-
-        BusMessage resp;
         const uint16_t responseCobId = static_cast<uint16_t>(0x580u + node_id);
-        if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
-            throw std::runtime_error("timeout waiting for SDO write response");
-        }
-
-        const uint8_t cs = resp.getByte(0);
-        if (cs == 0x80)
-        {
-            const uint32_t abortCode = parseSdoAbortCode(resp);
-            throw std::runtime_error(QString("SDO write aborted (0x%1)")
+        auto throwWriteAbort = [&](const BusMessage &response, const QString &prefix) {
+            const uint32_t abortCode = parseSdoAbortCode(response);
+            throw std::runtime_error(QString("%1 (0x%2)")
+                                     .arg(prefix)
                                      .arg(abortCode, 8, 16, QChar('0'))
                                      .toStdString());
-        }
+        };
 
-        if (cs != 0x60) {
-            throw std::runtime_error("unexpected SDO write response");
+        if (bytesValue && (payloadSize == 0 || payloadSize > 4))
+        {
+            BusMessage req;
+            req.setRawId(static_cast<uint32_t>(0x600u + node_id));
+            req.setLength(8);
+            req.setByte(0, 0x21);
+            req.setByte(1, static_cast<uint8_t>(index & 0xFF));
+            req.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
+            req.setByte(3, sub_index);
+            req.setByte(4, static_cast<uint8_t>(payloadSize & 0xFF));
+            req.setByte(5, static_cast<uint8_t>((payloadSize >> 8) & 0xFF));
+            req.setByte(6, static_cast<uint8_t>((payloadSize >> 16) & 0xFF));
+            req.setByte(7, static_cast<uint8_t>((payloadSize >> 24) & 0xFF));
+            intf->sendMessage(req);
+
+            BusMessage resp;
+            if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+                throw std::runtime_error("timeout waiting for SDO download response");
+            }
+
+            const uint8_t cs = resp.getByte(0);
+            if (cs == 0x80) {
+                throwWriteAbort(resp, QStringLiteral("SDO download aborted"));
+            }
+            if (cs != 0x60) {
+                throw std::runtime_error("unexpected SDO download response");
+            }
+
+            bool toggle = false;
+            int offset = 0;
+            const int segmentCount = qMax(1, (payloadSize + 6) / 7);
+            for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex)
+            {
+                const int chunkSize = qMin(7, payloadSize - offset);
+                const bool last = (segmentIndex + 1) == segmentCount;
+                const int unusedBytes = last ? 7 - chunkSize : 0;
+
+                BusMessage segment;
+                segment.setRawId(static_cast<uint32_t>(0x600u + node_id));
+                segment.setLength(8);
+                segment.setByte(0, static_cast<uint8_t>((toggle ? 0x10 : 0x00)
+                                                        | (unusedBytes << 1)
+                                                        | (last ? 0x01 : 0x00)));
+                for (int i = 0; i < 7; ++i) {
+                    segment.setByte(1 + i, i < chunkSize ? static_cast<uint8_t>(payload.at(offset + i)) : 0);
+                }
+                intf->sendMessage(segment);
+
+                BusMessage segmentResp;
+                if (!waitForSdoFrame(responseCobId, timeout, segmentResp)) {
+                    throw std::runtime_error("timeout waiting for SDO download segment response");
+                }
+
+                const uint8_t segmentCs = segmentResp.getByte(0);
+                if (segmentCs == 0x80) {
+                    throwWriteAbort(segmentResp, QStringLiteral("SDO download aborted"));
+                }
+                if ((segmentCs & 0xE0) != 0x20) {
+                    throw std::runtime_error("unexpected SDO download segment response");
+                }
+                const bool receivedToggle = (segmentCs & 0x10) != 0;
+                if (receivedToggle != toggle) {
+                    throw std::runtime_error("SDO download toggle mismatch");
+                }
+
+                offset += chunkSize;
+                toggle = !toggle;
+            }
+        }
+        else
+        {
+            BusMessage req;
+            req.setRawId(static_cast<uint32_t>(0x600u + node_id));
+            req.setLength(8);
+            req.setByte(0, static_cast<uint8_t>(0x23 | ((4 - payloadSize) << 2))); // Expedited download
+            req.setByte(1, static_cast<uint8_t>(index & 0xFF));
+            req.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
+            req.setByte(3, sub_index);
+            req.setByte(4, payloadSize > 0 ? static_cast<uint8_t>(payload.at(0)) : 0);
+            req.setByte(5, payloadSize > 1 ? static_cast<uint8_t>(payload.at(1)) : 0);
+            req.setByte(6, payloadSize > 2 ? static_cast<uint8_t>(payload.at(2)) : 0);
+            req.setByte(7, payloadSize > 3 ? static_cast<uint8_t>(payload.at(3)) : 0);
+            intf->sendMessage(req);
+
+            BusMessage resp;
+            if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+                throw std::runtime_error("timeout waiting for SDO write response");
+            }
+
+            const uint8_t cs = resp.getByte(0);
+            if (cs == 0x80) {
+                throwWriteAbort(resp, QStringLiteral("SDO write aborted"));
+            }
+            if (cs != 0x60) {
+                throw std::runtime_error("unexpected SDO write response");
+            }
         }
 
         py::dict result;
