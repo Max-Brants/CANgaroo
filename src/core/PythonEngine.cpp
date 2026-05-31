@@ -906,10 +906,11 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
             bool toggle = false;
             int offset = 0;
-            while (offset < payloadSize || payloadSize == 0)
+            const int segmentCount = qMax(1, (payloadSize + 6) / 7);
+            for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex)
             {
                 const int chunkSize = qMin(7, payloadSize - offset);
-                const bool last = (offset + chunkSize) >= payloadSize;
+                const bool last = (segmentIndex + 1) == segmentCount;
                 const int unusedBytes = last ? 7 - chunkSize : 0;
 
                 BusMessage segment;
@@ -935,15 +936,13 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                 if ((segmentCs & 0xE0) != 0x20) {
                     throw std::runtime_error("unexpected SDO download segment response");
                 }
-                if (((segmentCs & 0x10) != 0) != toggle) {
+                const bool receivedToggle = (segmentCs & 0x10) != 0;
+                if (receivedToggle != toggle) {
                     throw std::runtime_error("SDO download toggle mismatch");
                 }
 
                 offset += chunkSize;
                 toggle = !toggle;
-                if (last) {
-                    break;
-                }
             }
         }
         else

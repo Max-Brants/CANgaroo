@@ -107,8 +107,7 @@ bool isDomainType(const CanOpenObjectEntry &entry)
 
 QString jsonQuoted(const QByteArray &value)
 {
-    const QJsonArray values { QString::fromLatin1(value.toBase64()) };
-    return QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact)).mid(1).chopped(1);
+    return QStringLiteral("\"%1\"").arg(QString::fromLatin1(value.toBase64()));
 }
 
 int byteWidth(const CanOpenObjectEntry &entry)
