@@ -15,7 +15,7 @@ void UnifiedTraceViewModel::applyProtocolConfig()
 }
 
 UnifiedTraceViewModel::UnifiedTraceViewModel(Backend &backend, Category category)
-    : BaseTraceViewModel(backend), m_category(category), m_aggregating(category == Cat_J1939)
+    : BaseTraceViewModel(backend), m_category(category), m_protocolManager(&backend), m_aggregating(category == Cat_J1939)
 {
     applyProtocolConfig();
     m_rootItem = std::make_shared<UnifiedTraceItem>(BusMessage()); // Dummy root
@@ -23,7 +23,7 @@ UnifiedTraceViewModel::UnifiedTraceViewModel(Backend &backend, Category category
     m_previousRowTimestamp = 0;
     m_globalIndexCounter = 1;
 
-    m_processTimer.setInterval(150);
+    m_processTimer.setInterval(50);
     m_processTimer.setSingleShot(true);
     connect(&m_processTimer, &QTimer::timeout, this, &UnifiedTraceViewModel::processNewMessages);
 
@@ -439,6 +439,9 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
             case column_sender:
                 if (pmsg.protocol.compare("uds", Qt::CaseInsensitive) == 0) {
                     return (pmsg.type == MessageType::Request) ? tr("Tester") : tr("ECU");
+                }
+                if (pmsg.protocol.compare("canopen", Qt::CaseInsensitive) == 0) {
+                    return pmsg.metadata.value(QStringLiteral("Sender")).toString();
                 }
                 return "";
             default: return QVariant();

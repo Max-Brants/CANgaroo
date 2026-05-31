@@ -30,6 +30,7 @@
 #include "core/Backend.h"
 #include "core/MeasurementSetup.h"
 #include "core/MeasurementInterface.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 #include "driver/BusInterface.h"
 #include "driver/CanDriver.h"
@@ -55,6 +56,7 @@ SetupDialog::SetupDialog(Backend &backend, QWidget *parent) :
     _actionDeleteInterface = new QAction("Delete", this);
     _actionAddCanDb = new QAction("Add...", this);
     _actionDeleteCanDb = new QAction("Delete", this);
+    _actionDeleteCanOpenDb = new QAction("Delete", this);
     _actionDeleteLinDb = new QAction("Delete", this);
     _actionReloadCanDbs = new QAction("Reload", this);
 
@@ -91,6 +93,7 @@ SetupDialog::SetupDialog(Backend &backend, QWidget *parent) :
 
     connect(_actionAddCanDb, &QAction::triggered, this, &SetupDialog::executeAddCanDb);
     connect(_actionDeleteCanDb, &QAction::triggered, this, &SetupDialog::executeDeleteCanDb);
+    connect(_actionDeleteCanOpenDb, &QAction::triggered, this, &SetupDialog::executeDeleteCanOpenDb);
     connect(_actionDeleteLinDb, &QAction::triggered, this, &SetupDialog::executeDeleteLinDb);
 
     connect(_actionAddInterface, &QAction::triggered, this, &SetupDialog::executeAddInterface);
@@ -229,6 +232,10 @@ void SetupDialog::treeViewContextMenu(const QPoint &pos)
                 contextMenu.addAction(_actionDeleteCanDb);
                 contextMenu.addAction(_actionReloadCanDbs);
                 break;
+            case SetupDialogTreeItem::type_canopendb:
+                contextMenu.addAction(_actionDeleteCanOpenDb);
+                contextMenu.addAction(_actionReloadCanDbs);
+                break;
             case SetupDialogTreeItem::type_lindb:
                 contextMenu.addAction(_actionDeleteLinDb);
                 break;
@@ -288,24 +295,45 @@ void SetupDialog::reloadCanDbs(const QModelIndex &index)
     if (!item || !item->network) return;
 
     QStringList errors;
-    if (!item->network->reloadCanDbs(_backend, &errors)) {
-        QMessageBox::warning(this, tr("DBC Error"),
-            tr("Failed to reload one or more DBC files:\n\n%1").arg(errors.join("\n")));
+    const bool canOk = item->network->reloadCanDbs(_backend, &errors);
+    const bool canOpenOk = item->network->reloadCanOpenDbs(_backend, &errors);
+    const bool linOk = item->network->reloadLinDbs(_backend, &errors);
+    if (!canOk || !canOpenOk || !linOk) {
+        QMessageBox::warning(this, tr("Database Error"),
+            tr("Failed to reload one or more database files:\n\n%1").arg(errors.join("\n")));
     }
 
-    // Synchronize stale pointers in tree items
     SetupDialogTreeItem *root = (item->getType() == SetupDialogTreeItem::type_candb_root) ? item : item->getParentItem();
     if (root && root->getType() == SetupDialogTreeItem::type_candb_root) {
         for (int i=0; i < root->getChildCount(); ++i) {
             SetupDialogTreeItem *child = root->child(i);
-            if (child->getType() == SetupDialogTreeItem::type_candb) {
-                 // Find the updated pCanDb in the network by path
-                 for (const auto &updatedDb : root->network->_canDbs) {
-                     if (updatedDb->getPath() == child->candb->getPath()) {
-                         child->candb = updatedDb;
-                         break;
-                     }
-                 }
+            switch (child->getType()) {
+            case SetupDialogTreeItem::type_candb:
+                for (const auto &updatedDb : root->network->_canDbs) {
+                    if (updatedDb->getPath() == child->candb->getPath()) {
+                        child->candb = updatedDb;
+                        break;
+                    }
+                }
+                break;
+            case SetupDialogTreeItem::type_canopendb:
+                for (const auto &updatedDb : root->network->_canOpenDbs) {
+                    if (updatedDb->path() == child->canOpenDb->path()) {
+                        child->canOpenDb = updatedDb;
+                        break;
+                    }
+                }
+                break;
+            case SetupDialogTreeItem::type_lindb:
+                for (const auto &updatedDb : root->network->_linDbs) {
+                    if (updatedDb->path() == child->lindb->path()) {
+                        child->lindb = updatedDb;
+                        break;
+                    }
+                }
+                break;
+            default:
+                break;
             }
         }
     }
@@ -391,10 +419,63 @@ void SetupDialog::on_btAddDatabase_clicked()
             addLinDb(parent, filename);
         }
     } else {
-        QStringList files = QFileDialog::getOpenFileNames(this, "Load CAN Databases", "", "Vector DBC Files (*.dbc)");
+        QStringList files = QFileDialog::getOpenFileNames(this, "Load CAN Databases", "", "CAN Databases (*.dbc *.eds);;Vector DBC Files (*.dbc);;CANopen EDS Files (*.eds)");
         for (const QString &filename : files) {
-            addCanDb(parent, filename);
+            if (filename.endsWith(QStringLiteral(".eds"), Qt::CaseInsensitive)) {
+                addCanOpenDb(parent, filename);
+            } else {
+                addCanDb(parent, filename);
+            }
         }
+    }
+}
+
+void SetupDialog::addCanOpenDb(const QModelIndex &parent, const QString &filename)
+{
+    if (_currentNetwork) {
+        for (const auto &existingDb : _currentNetwork->_canOpenDbs) {
+            if (existingDb->path() == filename) {
+                QMessageBox::StandardButton reply =
+                    QMessageBox::question(this, tr("Duplicate EDS"),
+                        tr("The file is already loaded:\n%1\n\nDo you want to reload it?").arg(filename),
+                        QMessageBox::Yes | QMessageBox::No);
+
+                if (reply == QMessageBox::Yes) {
+                    SetupDialogTreeItem *root = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
+                    if (root && root->getType() == SetupDialogTreeItem::type_candb_root) {
+                        for (int i = 0; i < root->getChildCount(); ++i) {
+                            SetupDialogTreeItem *child = root->child(i);
+                            if (child->getType() == SetupDialogTreeItem::type_canopendb && child->canOpenDb->path() == filename) {
+                                model->deleteCanOpenDb(model->indexOfItem(child));
+                                break;
+                            }
+                        }
+                    }
+
+                    QString errorMsg;
+                    pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
+                    if (canOpenDb) {
+                        model->addCanOpenDb(parent, canOpenDb);
+                    } else {
+                        QMessageBox::critical(this, tr("Reload Failed"),
+                            tr("Failed to reload EDS:\n%1\n\nReason: %2").arg(filename, errorMsg));
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    QString errorMsg;
+    pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
+    if (canOpenDb) {
+        model->addCanOpenDb(parent, canOpenDb);
+        if (!errorMsg.isEmpty()) {
+            QMessageBox::warning(this, tr("EDS Warning"), errorMsg);
+        }
+    } else {
+        QMessageBox::critical(this, tr("EDS Error"),
+            tr("Failed to load EDS file:\n%1\n\nReason: %2").arg(filename, errorMsg));
     }
 }
 
@@ -489,6 +570,11 @@ void SetupDialog::executeDeleteCanDb()
     model->deleteCanDb(getSelectedIndex());
 }
 
+void SetupDialog::executeDeleteCanOpenDb()
+{
+    model->deleteCanOpenDb(getSelectedIndex());
+}
+
 void SetupDialog::executeDeleteLinDb()
 {
     model->deleteLinDb(getSelectedIndex());
@@ -496,7 +582,25 @@ void SetupDialog::executeDeleteLinDb()
 
 void SetupDialog::on_btRemoveDatabase_clicked()
 {
-    model->deleteCanDb(ui->candbsTreeView->selectionModel()->currentIndex());
+    QModelIndex index = ui->candbsTreeView->selectionModel()->currentIndex();
+    SetupDialogTreeItem *item = static_cast<SetupDialogTreeItem*>(index.internalPointer());
+    if (!item) {
+        return;
+    }
+
+    switch (item->getType()) {
+    case SetupDialogTreeItem::type_candb:
+        model->deleteCanDb(index);
+        break;
+    case SetupDialogTreeItem::type_canopendb:
+        model->deleteCanOpenDb(index);
+        break;
+    case SetupDialogTreeItem::type_lindb:
+        model->deleteLinDb(index);
+        break;
+    default:
+        break;
+    }
 }
 
 void SetupDialog::updateButtons()
@@ -536,4 +640,3 @@ bool SetupDialog::isReflashNetworks()
 {
     return _isReflashNetworks;
 }
-

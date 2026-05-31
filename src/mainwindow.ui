@@ -174,6 +174,7 @@
      <addaction name="actionTransmit_View"/>
      <addaction name="actionGenerator_View"/>
      <addaction name="actionScript_View"/>
+     <addaction name="actionSDO_View"/>
      <addaction name="actionReplay_View"/>
      <addaction name="actionLin_Control_View"/>
      <addaction name="actionGpio_Control_View"/>
@@ -360,6 +361,11 @@
   <action name="actionScript_View">
    <property name="text">
     <string>Script View</string>
+   </property>
+  </action>
+  <action name="actionSDO_View">
+   <property name="text">
+   <string>SDO View</string>
    </property>
   </action>
   <action name="actionReplay_View">

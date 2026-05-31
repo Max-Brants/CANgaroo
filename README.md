@@ -21,11 +21,13 @@
 
 *   **Real-time CAN/CAN-FD/LIN Decoding**: Support for standard CAN, high-speed CAN-FD, and LIN bus frames.
 *   **Wide Hardware Compatibility**: Works with **SocketCAN** (Linux), **PEAK PCAN**, **Kvaser**, **Vector**, **TinyCAN**, **CANable**, **Candlelight**, **SLCAN**, **CANblaster** (UDP) and **ZsCanFd**.
-*   **DBC & LDF Database Support**: Load multiple `.dbc` files for CAN signal decoding and `.ldf` files for LIN bus signal decoding.
+*   **DBC, EDS & LDF Database Support**: Load multiple `.dbc` files for CAN signal decoding, `.eds` files for CANopen object dictionaries / PDO mapping, and `.ldf` files for LIN bus signal decoding.
 *   **Powerful Data Visualization**: Integrated Graphing tools supporting Time-series, Scatter charts, Text-based monitoring, and interactive Gauge views with zoom and live tooltips. Supports both CAN and LIN signals.
 *   **Advanced Filtering & Logging**: Isolate critical data with live filters and export captures for offline analysis.
 *   **Network Rights Management**: Per-network access control for bus interfaces.
-*   **Python Scripting**: Built-in script editor with an embedded Python interpreter (via pybind11). Send and receive CAN and LIN messages, decode signals using loaded DBC/LDF files, and automate tasks. Scripts can be started manually or automatically with the measurement. Ready-to-use example scripts are included in the `examples/` directory.
+*   **Python Scripting**: Built-in script editor with an embedded Python interpreter (via pybind11). Send and receive CAN and LIN messages, decode signals using loaded DBC/LDF files, perform CANopen SDO object read/write requests (including segmented/domain uploads), and automate tasks. Scripts can be started manually or automatically with the measurement. Ready-to-use example scripts are included in the `examples/` directory.
+*   **CANopen SDO View**: Browse loaded EDS object dictionaries by network/device, filter objects, and perform object-aware SDO read/write/domain upload operations directly from the UI.
+*   **Basic CANopen Trace Decoding**: Decode CANopen NMT, SYNC, TIME, EMCY, heartbeat, SDO, and PDO frames in the live trace, with EDS-backed object names where available.
 *   **CAN Gateway**: Forward messages between two CAN interfaces with configurable per-message filter rules. Active during a running measurement.
 *   **LIN Control**: Send LIN Sleep/Wakeup commands to connected LIN-capable interfaces directly from the UI.
 *   **Trace Replay**: Replay captured CAN logs (Vector ASC, candump, PCAP, and PCAPng formats) with adjustable speed, per-message RX/TX direction filtering, channel mapping to live interfaces, and optional autoplay with the measurement. Supports classic CAN, CAN-FD, RTR, and error frames.
@@ -144,6 +146,16 @@ pip install canconvert
 # Convert ARXML to DBC
 canconvert TCU.arxml TCU.dbc
 ```
+
+## CANopen SDO View
+
+1. Load one or more `.eds` files into the active setup/network.
+2. Open **Window → New → SDO View** (Trace tabs also include an SDO View dock by default).
+3. Select the target network, EDS device, interface, and node ID.
+4. Filter the object list, select an entry, then use **Read**, **Write**, or **Domain Upload**.
+5. Domain uploads show the byte count, hex/text preview, and can be saved directly to a file.
+
+The Python Script view still keeps the script-based SDO helpers for advanced or backward-compatible workflows.
 
 ## 📥 Download
 

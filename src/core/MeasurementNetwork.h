@@ -28,6 +28,7 @@
 #include "driver/CanDriver.h"
 #include "driver/BusInterface.h"
 #include "core/DBC/CanDb.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 
 class Backend;
@@ -53,6 +54,10 @@ public:
     void addLinDb(pLinDb lindb);
     bool reloadLinDbs(Backend *backend, QStringList *errors = nullptr);
     QList<pLinDb> _linDbs;
+
+    void addCanOpenDb(pCanOpenDb canOpenDb);
+    bool reloadCanOpenDbs(Backend *backend, QStringList *errors = nullptr);
+    QList<pCanOpenDb> _canOpenDbs;
 
     QString name() const;
     void setName(const QString &name);

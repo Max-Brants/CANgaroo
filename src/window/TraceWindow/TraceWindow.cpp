@@ -139,7 +139,7 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
     connect(ui->cbViewMode, &QComboBox::currentIndexChanged, this, &TraceWindow::on_cbViewMode_currentIndexChanged);
     connect(ui->filterButton, &QPushButton::clicked, this, &TraceWindow::openFilterDialog);
 
-    _scrollTimer.setInterval(100);
+    _scrollTimer.setInterval(50);
     _scrollTimer.setSingleShot(true);
     connect(&_scrollTimer, &QTimer::timeout, this, &TraceWindow::doScrollToBottom);
 
@@ -488,4 +488,3 @@ void TraceWindow::applyDialogFilters()
     }
     applyToModel(_aggMonitorFilterModel);
 }
-

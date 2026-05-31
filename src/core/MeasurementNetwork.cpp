@@ -23,6 +23,7 @@
 #include "MeasurementInterface.h"
 
 #include "core/Backend.h"
+#include "core/DBC/CanOpenDb.h"
 #include "core/DBC/LinDb.h"
 
 
@@ -40,6 +41,7 @@ void MeasurementNetwork::cloneFrom(MeasurementNetwork &origin)
     }
     _canDbs = origin._canDbs;
     _linDbs = origin._linDbs;
+    _canOpenDbs = origin._canOpenDbs;
 }
 
 void MeasurementNetwork::addInterface(MeasurementInterface *intf)
@@ -122,6 +124,27 @@ bool MeasurementNetwork::reloadLinDbs(Backend *backend, QStringList *errors)
     return allSuccess;
 }
 
+void MeasurementNetwork::addCanOpenDb(pCanOpenDb canOpenDb)
+{
+    _canOpenDbs.append(canOpenDb);
+}
+
+bool MeasurementNetwork::reloadCanOpenDbs(Backend *backend, QStringList *errors)
+{
+    bool allSuccess = true;
+    for (pCanOpenDb &db : _canOpenDbs) {
+        QString errorMsg;
+        pCanOpenDb newDb = backend->loadEds(db->path(), &errorMsg);
+        if (newDb) {
+            db = newDb;
+        } else {
+            allSuccess = false;
+            if (errors)
+                errors->append(QString("%1: %2").arg(db->path(), errorMsg));
+        }
+    }
+    return allSuccess;
+}
 
 QString MeasurementNetwork::name() const
 {
@@ -160,6 +183,12 @@ bool MeasurementNetwork::saveXML(Backend &backend, QDomDocument &xml, QDomElemen
         QDomElement dbNode = xml.createElement("database");
         dbNode.setAttribute("db-type", "ldf");
         dbNode.setAttribute("filename", lindb->path());
+        candbsNode.appendChild(dbNode);
+    }
+    for (const auto &canOpenDb : _canOpenDbs) {
+        QDomElement dbNode = xml.createElement("database");
+        dbNode.setAttribute("db-type", "eds");
+        dbNode.setAttribute("filename", canOpenDb->path());
         candbsNode.appendChild(dbNode);
     }
     root.appendChild(candbsNode);
@@ -208,6 +237,10 @@ bool MeasurementNetwork::loadXML(Backend &backend, QDomElement el)
             pLinDb lindb = backend.loadLdf(filename);
             if (lindb) addLinDb(lindb);
             else log_error(QString("Unable to load LDF: %1").arg(filename));
+        } else if (dbType == "eds") {
+            pCanOpenDb canOpenDb = backend.loadEds(filename);
+            if (canOpenDb) addCanOpenDb(canOpenDb);
+            else log_error(QString("Unable to load EDS: %1").arg(filename));
         } else {
             addCanDb(backend.loadDbc(filename));
         }
