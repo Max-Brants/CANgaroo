@@ -498,7 +498,7 @@ void SdoWindow::onWriteClicked()
 
     const int interfaceId = _interfaceCombo->currentData().toInt();
     const QString script = buildWriteScript(entry->index, entry->subIndex,
-                                            interfaceId, _nodeSpin->value(), payload, 1.0);
+                                            interfaceId, _nodeSpin->value(), payload, 1.0, false);
     setBusy(QStringLiteral("write"), tr("Writing %1...").arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex)));
     _engine->runScript(script);
 }
@@ -526,7 +526,7 @@ void SdoWindow::onDomainUploadClicked()
 
     const QByteArray payload = file.readAll();
     const QString script = buildWriteScript(entry->index, entry->subIndex,
-                                            interfaceId, _nodeSpin->value(), payload, 10.0);
+                                            interfaceId, _nodeSpin->value(), payload, 10.0, true);
     setBusy(QStringLiteral("domain-download"),
             tr("Downloading %1 to device (%2 bytes)...")
                 .arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex))
@@ -1196,13 +1196,13 @@ QString SdoWindow::buildReadScript(const QString &command, quint16 index, quint8
         .arg(command);
 }
 
-QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload, double timeoutSec) const
+QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload, double timeoutSec, bool forceSegment) const
 {
     return QString(
         "import base64, json, cangaroo\n"
         "payload = base64.b64decode(%1)\n"
         "try:\n"
-        "    res = cangaroo.sdo_write(node_id=%2, index=%3, sub_index=%4, value=payload, size=None, interface_id=%5, timeout=%6)\n"
+        "    res = cangaroo.sdo_write(node_id=%2, index=%3, sub_index=%4, value=payload, size=None, interface_id=%5, timeout=%6, force_segment=%7)\n"
         "    print('CANGAROO_SDO_JSON:' + json.dumps({'cmd': 'write', 'node_id': res['node_id'], 'index': res['index'], 'sub_index': res['sub_index'], 'size': res['size'], 'raw': res['raw'], 'base64': base64.b64encode(payload).decode('ascii')}))\n"
         "except Exception as exc:\n"
         "    print('CANGAROO_SDO_ERROR:' + json.dumps({'cmd': 'write', 'index': %3, 'sub_index': %4, 'message': str(exc)}))\n")
@@ -1211,5 +1211,6 @@ QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfac
         .arg(index)
         .arg(subIndex)
         .arg(interfaceId)
-        .arg(QString::number(timeoutSec, 'f', 2));
+        .arg(QString::number(timeoutSec, 'f', 2))
+        .arg(forceSegment ? QStringLiteral("True") : QStringLiteral("False"));
 }

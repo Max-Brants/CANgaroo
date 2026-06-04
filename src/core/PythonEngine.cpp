@@ -798,7 +798,8 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                                                                 py::object value,
                                                                 py::object size,
                                                                 uint16_t interface_id,
-                                                                double timeout) -> py::dict
+                                                                double timeout,
+                                                                bool force_segment) -> py::dict
     {
         if (!g_activeEngine) {
             throw std::runtime_error("no active engine");
@@ -876,8 +877,10 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                                      .toStdString());
         };
 
-        if (bytesValue && (payloadSize == 0 || payloadSize > 4))
+        if (bytesValue && (force_segment || payloadSize == 0 || payloadSize > 4))
         {
+            static constexpr int MAX_RETRIES = 3;
+
             BusMessage req;
             req.setRawId(static_cast<uint32_t>(0x600u + node_id));
             req.setLength(8);
@@ -889,19 +892,26 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             req.setByte(5, static_cast<uint8_t>((payloadSize >> 8) & 0xFF));
             req.setByte(6, static_cast<uint8_t>((payloadSize >> 16) & 0xFF));
             req.setByte(7, static_cast<uint8_t>((payloadSize >> 24) & 0xFF));
-            intf->sendMessage(req);
 
             BusMessage resp;
-            if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
-                throw std::runtime_error("timeout waiting for SDO download response");
+            bool initiateOk = false;
+            for (int attempt = 0; attempt < MAX_RETRIES && !initiateOk; ++attempt) {
+                intf->sendMessage(req);
+                if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+                    if (attempt + 1 >= MAX_RETRIES) {
+                        throw std::runtime_error("timeout waiting for SDO download initiate response");
+                    }
+                    continue;
+                }
+                initiateOk = true;
             }
 
             const uint8_t cs = resp.getByte(0);
             if (cs == 0x80) {
-                throwWriteAbort(resp, QStringLiteral("SDO download aborted"));
+                throwWriteAbort(resp, QStringLiteral("SDO download initiate aborted"));
             }
-            if (cs != 0x60) {
-                throw std::runtime_error("unexpected SDO download response");
+            if ((cs >> 5) != 3) {
+                throw std::runtime_error("unexpected SDO download initiate response");
             }
 
             bool toggle = false;
@@ -922,16 +932,23 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                 for (int i = 0; i < 7; ++i) {
                     segment.setByte(1 + i, i < chunkSize ? static_cast<uint8_t>(payload.at(offset + i)) : 0);
                 }
-                intf->sendMessage(segment);
 
                 BusMessage segmentResp;
-                if (!waitForSdoFrame(responseCobId, timeout, segmentResp)) {
-                    throw std::runtime_error("timeout waiting for SDO download segment response");
+                bool segmentOk = false;
+                for (int attempt = 0; attempt < MAX_RETRIES && !segmentOk; ++attempt) {
+                    intf->sendMessage(segment);
+                    if (!waitForSdoFrame(responseCobId, timeout, segmentResp)) {
+                        if (attempt + 1 >= MAX_RETRIES) {
+                            throw std::runtime_error("timeout waiting for SDO download segment response");
+                        }
+                        continue;
+                    }
+                    segmentOk = true;
                 }
 
                 const uint8_t segmentCs = segmentResp.getByte(0);
                 if (segmentCs == 0x80) {
-                    throwWriteAbort(segmentResp, QStringLiteral("SDO download aborted"));
+                    throwWriteAbort(segmentResp, QStringLiteral("SDO download segment aborted"));
                 }
                 if ((segmentCs & 0xE0) != 0x20) {
                     throw std::runtime_error("unexpected SDO download segment response");
@@ -969,7 +986,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             if (cs == 0x80) {
                 throwWriteAbort(resp, QStringLiteral("SDO write aborted"));
             }
-            if (cs != 0x60) {
+            if ((cs >> 5) != 3) {
                 throw std::runtime_error("unexpected SDO write response");
             }
         }
@@ -989,7 +1006,8 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("value"),
     py::arg("size") = py::none(),
     py::arg("interface_id") = 0,
-    py::arg("timeout") = 1.0);
+    py::arg("timeout") = 1.0,
+    py::arg("force_segment") = false);
 
     // --- DBC / database access ---
 
