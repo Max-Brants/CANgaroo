@@ -910,7 +910,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             if (cs == 0x80) {
                 throwWriteAbort(resp, QStringLiteral("SDO download initiate aborted"));
             }
-            if ((cs >> 5) != 3) {
+            if ((cs >> 5) != 3) { // CiA 301: scs=3 (initiate download response)
                 throw std::runtime_error("unexpected SDO download initiate response");
             }
 
@@ -986,7 +986,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             if (cs == 0x80) {
                 throwWriteAbort(resp, QStringLiteral("SDO write aborted"));
             }
-            if ((cs >> 5) != 3) {
+            if ((cs >> 5) != 3) { // CiA 301: scs=3 (download response)
                 throw std::runtime_error("unexpected SDO write response");
             }
         }
