@@ -71,6 +71,9 @@ void BusListener::run()
         if (_intf.readMessage(rxMessages, 100)) {
             for(const BusMessage &msg: std::as_const(rxMessages))
             {
+                // CAN drivers call addFrameBits themselves; handle LIN here centrally.
+                if (msg.busType() == BusType::LIN)
+                    _intf.addFrameBits(msg);
                 trace->enqueueMessage(msg, false);
             }
             rxMessages.clear();

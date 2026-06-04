@@ -23,6 +23,7 @@
 #pragma once
 
 #include "core/ConfigurableWidget.h"
+#include "driver/BusInterface.h"
 #include <QEvent>
 #include <QMap>
 
@@ -83,6 +84,7 @@ private:
         qint64 lastTime;
     };
     QMap<void*, InterfaceStats> _lastStats;
+    QMap<BusInterface*, unsigned> _effectiveBitrates;
 
     virtual QSize sizeHint() const override;
 };

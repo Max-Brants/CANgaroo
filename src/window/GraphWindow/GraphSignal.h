@@ -29,12 +29,13 @@ class CanDbSignal;
 class LinSignal;
 class LinFrame;
 
-// Unified signal reference for graphing — wraps either a CAN or LIN signal.
+// Unified signal reference for graphing — wraps a CAN signal, LIN signal, or virtual bus-load signal.
 class GraphSignal
 {
 public:
     explicit GraphSignal(CanDbSignal *signal);
     GraphSignal(LinSignal *signal, LinFrame *frame);
+    GraphSignal(uint16_t interfaceId, unsigned bitrate, const QString &label);
 
     QString name() const;
     QString unit() const;
@@ -43,6 +44,10 @@ public:
     QString parentName() const;
     QString comment() const;
     bool isLin() const noexcept;
+    bool isBusLoad() const noexcept;
+
+    uint16_t busLoadInterfaceId() const noexcept;
+    unsigned busLoadBitrate() const noexcept;
 
     bool isPresentInMessage(const BusMessage &msg) const;
     double extractPhysicalFromMessage(const BusMessage &msg) const;
@@ -51,7 +56,8 @@ public:
     LinSignal   *asLinSignal() const noexcept;
 
 private:
-    struct CanData { CanDbSignal *signal; };
-    struct LinData { LinSignal *signal; LinFrame *frame; };
-    std::variant<CanData, LinData> _data;
+    struct CanData     { CanDbSignal *signal; };
+    struct LinData     { LinSignal *signal; LinFrame *frame; };
+    struct BusLoadData { uint16_t interfaceId; unsigned bitrate; QString label; };
+    std::variant<CanData, LinData, BusLoadData> _data;
 };

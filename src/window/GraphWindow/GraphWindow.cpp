@@ -40,6 +40,7 @@
 #include "core/BusMessage.h"
 #include "core/MeasurementSetup.h"
 #include "core/MeasurementNetwork.h"
+#include "core/MeasurementInterface.h"
 #include "core/DBC/CanDbMessage.h"
 #include "core/DBC/LinFrame.h"
 #include "core/DBC/LinSignal.h"
@@ -73,6 +74,7 @@ void SignalDecoderWorker::clearActiveSignals()
     QMutexLocker locker(&_mutex);
     _activeSignals.clear();
     _signalInterfaces.clear();
+    _busLoadWindows.clear();
 }
 
 void SignalDecoderWorker::reset()
@@ -80,6 +82,7 @@ void SignalDecoderWorker::reset()
     QMutexLocker locker(&_mutex);
     _lastProcessedIdx = _backend.getTrace()->size();
     _globalStartTime = -1.0;
+    _busLoadWindows.clear();
 }
 
 void SignalDecoderWorker::rewindForWindow(int windowSeconds)
@@ -116,6 +119,20 @@ void SignalDecoderWorker::rewindForWindow(int windowSeconds)
     _globalStartTime = -1.0;
 }
 
+static uint32_t computeFrameBits(const BusMessage &msg)
+{
+    if (msg.busType() == BusType::LIN) {
+        // Break(14) + Sync(10) + PID(10) + data bytes (10 each) + checksum(10)
+        return 44 + static_cast<uint32_t>(msg.getLength()) * 10;
+    }
+    uint32_t dlc = msg.getLength();
+    uint32_t bits = 47 + (dlc * 8);
+    if (msg.isExtended()) bits += 20;
+    if (msg.isFD())       bits += 20;
+    bits += bits / 5;
+    return bits;
+}
+
 void SignalDecoderWorker::onTraceAppended()
 {
     QMutexLocker locker(&_mutex);
@@ -137,6 +154,8 @@ void SignalDecoderWorker::onTraceAppended()
         return;
     }
 
+    constexpr double busLoadWindowSecs = 1.0;
+
     QMap<GraphSignal*, DecodedSignalData> newPoints;
 
     for (int i = _lastProcessedIdx; i < currentSize; ++i) {
@@ -145,14 +164,37 @@ void SignalDecoderWorker::onTraceAppended()
         double t = msg.getFloatTimestamp() - _globalStartTime;
 
         for (GraphSignal* signal : _activeSignals) {
-            if (signal->isPresentInMessage(msg)) {
-                if (_signalInterfaces.contains(signal) && !_signalInterfaces[signal].contains(msgIfId)) {
-                    continue;
+            if (signal->isBusLoad()) {
+                if (msg.getInterfaceId() != signal->busLoadInterfaceId()) continue;
+
+                uint32_t bits = computeFrameBits(msg);
+                auto &window = _busLoadWindows[signal];
+                window.append({t, bits});
+
+                // Prune entries outside the rolling window
+                while (!window.isEmpty() && window.first().timestamp < t - busLoadWindowSecs)
+                    window.removeFirst();
+
+                unsigned bitrate = signal->busLoadBitrate();
+                if (bitrate > 0) {
+                    uint64_t totalBits = 0;
+                    for (const auto &entry : std::as_const(window)) totalBits += entry.bits;
+                    double load = static_cast<double>(totalBits)
+                                  / (static_cast<double>(bitrate) * busLoadWindowSecs) * 100.0;
+                    if (load > 100.0) load = 100.0;
+                    newPoints[signal].interfaceId = msgIfId;
+                    newPoints[signal].timestamps.append(t);
+                    newPoints[signal].values.append(load);
                 }
-                double value = signal->extractPhysicalFromMessage(msg);
-                newPoints[signal].interfaceId = msgIfId;
-                newPoints[signal].timestamps.append(t);
-                newPoints[signal].values.append(value);
+            } else {
+                if (signal->isPresentInMessage(msg)) {
+                    if (_signalInterfaces.contains(signal) && !_signalInterfaces[signal].contains(msgIfId))
+                        continue;
+                    double value = signal->extractPhysicalFromMessage(msg);
+                    newPoints[signal].interfaceId = msgIfId;
+                    newPoints[signal].timestamps.append(t);
+                    newPoints[signal].values.append(value);
+                }
             }
         }
     }
@@ -773,6 +815,40 @@ bool GraphWindow::saveXML(Backend &backend, QDomDocument &xml, QDomElement &root
     root.setAttribute("type", "GraphWindow");
     root.setAttribute("viewType", ui->viewSelector->currentIndex());
     root.setAttribute("tabWidgetWidth", ui->tabWidget->width());
+    root.setAttribute("duration", ui->durationSelector->currentIndex());
+
+    // Save active signals from the current visualization
+    QList<GraphSignal*> activeSignals;
+    QMap<GraphSignal*, QColor> signalColors;
+    if (_activeVisualization) {
+        activeSignals = _activeVisualization->getSignals();
+        for (GraphSignal *gs : activeSignals)
+            signalColors[gs] = _activeVisualization->getSignalColor(gs);
+    }
+
+    if (!activeSignals.isEmpty()) {
+        QDomElement signalsEl = xml.createElement("signals");
+        root.appendChild(signalsEl);
+
+        for (GraphSignal *gs : activeSignals) {
+            QDomElement sigEl = xml.createElement("signal");
+            if (gs->isBusLoad()) {
+                sigEl.setAttribute("type", "busload");
+                sigEl.setAttribute("name", gs->name());
+            } else if (gs->isLin()) {
+                sigEl.setAttribute("type", "lin");
+                sigEl.setAttribute("parent", gs->parentName());
+                sigEl.setAttribute("name", gs->name());
+            } else {
+                sigEl.setAttribute("type", "can");
+                sigEl.setAttribute("parent", gs->parentName());
+                sigEl.setAttribute("name", gs->name());
+            }
+            sigEl.setAttribute("color", signalColors.value(gs, QColor()).name());
+            signalsEl.appendChild(sigEl);
+        }
+    }
+
     return true;
 }
 
@@ -790,7 +866,60 @@ bool GraphWindow::loadXML(Backend &backend, QDomElement &el)
             ui->verticalMainSplitter->setSizes({total - tabWidth, tabWidth});
         });
     }
+    const int duration = el.attribute("duration", "1").toInt();
+    ui->durationSelector->setCurrentIndex(duration);
+
+    _pendingSignals.clear();
+    QDomElement signalsEl = el.firstChildElement("signals");
+    QDomNodeList sigNodes = signalsEl.elementsByTagName("signal");
+    for (int i = 0; i < sigNodes.count(); ++i) {
+        QDomElement sigEl = sigNodes.at(i).toElement();
+        PendingSignal ps;
+        ps.type   = sigEl.attribute("type");
+        ps.parent = sigEl.attribute("parent");
+        ps.name   = sigEl.attribute("name");
+        ps.color  = QColor(sigEl.attribute("color"));
+        _pendingSignals.append(ps);
+    }
+
     return true;
+}
+
+void GraphWindow::applyPendingSignals()
+{
+    if (_pendingSignals.isEmpty()) return;
+
+    // Match each pending signal to a tree item by identity
+    QTreeWidgetItemIterator it(ui->signalTree);
+    while (*it) {
+        QTreeWidgetItem *item = *it;
+        void *ptr = item->data(0, Qt::UserRole).value<void*>();
+        if (ptr) {
+            GraphSignal *gs = static_cast<GraphSignal*>(ptr);
+            for (const PendingSignal &ps : std::as_const(_pendingSignals)) {
+                bool match = false;
+                if (ps.type == "busload" && gs->isBusLoad())
+                    match = (gs->name() == ps.name);
+                else if (ps.type == "lin" && gs->isLin())
+                    match = (gs->name() == ps.name && gs->parentName() == ps.parent);
+                else if (ps.type == "can" && !gs->isLin() && !gs->isBusLoad())
+                    match = (gs->name() == ps.name && gs->parentName() == ps.parent);
+
+                if (match) {
+                    item->setCheckState(0, Qt::Checked);
+                    // Restore color on the item icon so onAddGraphClicked picks it up
+                    QPixmap pix(12, 12);
+                    pix.fill(ps.color.isValid() ? ps.color : Qt::white);
+                    item->setIcon(0, QIcon(pix));
+                    break;
+                }
+            }
+        }
+        ++it;
+    }
+
+    _pendingSignals.clear();
+    onAddGraphClicked();
 }
 
 void GraphWindow::onResumeMeasurement()
@@ -806,6 +935,27 @@ void GraphWindow::onPauseMeasurement()
 
 void GraphWindow::populateSignalTree()
 {
+    // Snapshot currently active signals before clearing, so they survive setup changes.
+    if (_pendingSignals.isEmpty() && _activeVisualization) {
+        for (GraphSignal *gs : _activeVisualization->getSignals()) {
+            PendingSignal ps;
+            ps.color = _activeVisualization->getSignalColor(gs);
+            if (gs->isBusLoad()) {
+                ps.type = QStringLiteral("busload");
+                ps.name = gs->name();
+            } else if (gs->isLin()) {
+                ps.type   = QStringLiteral("lin");
+                ps.parent = gs->parentName();
+                ps.name   = gs->name();
+            } else {
+                ps.type   = QStringLiteral("can");
+                ps.parent = gs->parentName();
+                ps.name   = gs->name();
+            }
+            _pendingSignals.append(ps);
+        }
+    }
+
     ui->signalTree->blockSignals(true);
     ui->signalTree->clear();
 
@@ -839,6 +989,8 @@ void GraphWindow::populateSignalTree()
         pix.fill(c);
         sigItem->setIcon(0, QIcon(pix));
     };
+
+    QTreeWidgetItem *virtRoot = nullptr;
 
     for (MeasurementNetwork *network : setup.getNetworks()) {
         BusInterfaceIdList interfaces = network->getReferencedBusInterfaces();
@@ -924,9 +1076,47 @@ void GraphWindow::populateSignalTree()
                 }
             }
         }
+
+        // ── Virtual signals (Bus Load) ────────────────────────────────
+        for (MeasurementInterface *mi : network->interfaces()) {
+            const bool isCan = (mi->busType() == BusType::CAN);
+            const bool isLin = (mi->busType() == BusType::LIN);
+            if (!isCan && !isLin) continue;
+
+            unsigned bitrate = isLin ? mi->linBaudRate() : mi->bitrate();
+            if (bitrate == 0) continue;
+
+            BusInterfaceId ifId = mi->busInterface();
+            QString ifName = _backend.getInterfaceName(ifId);
+            QString label = tr("Bus Load — %1").arg(ifName.isEmpty() ? QString::number(ifId) : ifName);
+
+            auto *gs = new GraphSignal(ifId, bitrate, label);
+            _ownedSignals.append(gs);
+
+            if (!virtRoot) {
+                virtRoot = new QTreeWidgetItem(ui->signalTree);
+                virtRoot->setText(0, tr("Virtual"));
+                virtRoot->setExpanded(true);
+            }
+
+            QTreeWidgetItem *sigItem = new QTreeWidgetItem(virtRoot);
+            sigItem->setText(0, label);
+            sigItem->setText(1, tr("0..100 %"));
+            sigItem->setText(2, tr("1 s rolling window"));
+            sigItem->setCheckState(0, Qt::Unchecked);
+            sigItem->setData(0, Qt::UserRole, QVariant::fromValue(static_cast<void*>(gs)));
+            sigItem->setData(0, Qt::UserRole + 1, QVariant::fromValue(BusInterfaceIdList{ifId}));
+
+            QPixmap pix(12, 12);
+            pix.fill(QColor("#ff8f00"));
+            sigItem->setIcon(0, QIcon(pix));
+        }
     }
 
     ui->signalTree->blockSignals(false);
+
+    if (!_pendingSignals.isEmpty())
+        QTimer::singleShot(0, this, &GraphWindow::applyPendingSignals);
 }
 
 void GraphWindow::onSearchTextChanged(const QString &text)

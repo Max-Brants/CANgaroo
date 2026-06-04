@@ -106,6 +106,18 @@ void CanStatusWindow::beginMeasurement()
 {
     ui->treeWidget->clear();
     _lastStats.clear();
+    _effectiveBitrates.clear();
+
+    // Build effective bitrate map: use LIN baud rate for LIN interfaces.
+    for (MeasurementNetwork *network : backend().getSetup().getNetworks()) {
+        for (MeasurementInterface *mi : network->interfaces()) {
+            BusInterface *intf = backend().getInterfaceById(mi->busInterface());
+            if (!intf) continue;
+            unsigned bitrate = (mi->busType() == BusType::LIN) ? mi->linBaudRate() : mi->bitrate();
+            _effectiveBitrates[intf] = bitrate;
+        }
+    }
+
     for (auto ifid : backend().getInterfaceList()) {
         BusInterface *intf = backend().getInterfaceById(ifid);
         QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeWidget);
@@ -177,7 +189,7 @@ void CanStatusWindow::update()
                  qint64 dt = now - ls.lastTime;
                  if (dt >= 500) { // Update load every ~500ms for stability
                      uint64_t dbits = currentBits - ls.lastBits;
-                     unsigned bitrate = intf->getBitrate();
+                     unsigned bitrate = _effectiveBitrates.value(intf, intf->getBitrate());
                      if (bitrate > 0) {
                          double load = static_cast<double>(dbits) * 1000.0 / static_cast<double>(bitrate) / static_cast<double>(dt) * 100.0;
                          if (load > 100.0) load = 100.0;

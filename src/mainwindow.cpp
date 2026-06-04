@@ -512,6 +512,12 @@ bool MainWindow::loadWorkspaceTab(QDomElement el)
         if (script && !scriptEl.isNull())
             script->loadXML(backend(), scriptEl);
 
+        // Load GraphWindow dock content (active signals, view type, duration) if present.
+        GraphWindow *graph = mw->findChild<GraphWindow *>();
+        QDomElement graphEl = el.firstChildElement("graphwindow");
+        if (graph && !graphEl.isNull())
+            graph->loadXML(backend(), graphEl);
+
         // Restore dock layout state (splits, tabification, sizes).
         // Deferred so it runs after the default layout timer from createTraceWindow().
         const QString dockState = el.attribute("dockstate");
@@ -648,6 +654,15 @@ bool MainWindow::saveWorkspaceToFile(const QString &filename)
             QDomElement scriptEl = doc.createElement("scriptwindow");
             script->saveXML(backend(), doc, scriptEl);
             tabEl.appendChild(scriptEl);
+        }
+
+        // Save GraphWindow dock content (active signals, view type, duration).
+        GraphWindow *graph = w->findChild<GraphWindow *>();
+        if (graph)
+        {
+            QDomElement graphEl = doc.createElement("graphwindow");
+            graph->saveXML(backend(), doc, graphEl);
+            tabEl.appendChild(graphEl);
         }
 
         tabsRoot.appendChild(tabEl);
