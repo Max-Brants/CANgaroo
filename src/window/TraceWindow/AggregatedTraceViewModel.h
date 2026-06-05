@@ -58,6 +58,7 @@ private:
     struct PendingMessageEntry {
         BusMessage msg;
         bool hasProtocolMessage = false;
+        DecodeStatus decodeStatus = DecodeStatus::Ignored;
         ProtocolMessage protocolMessage;
     };
 

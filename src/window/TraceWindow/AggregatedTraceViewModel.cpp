@@ -118,10 +118,18 @@ void AggregatedTraceViewModel::updateItem(const PendingMessageEntry &entry)
     if (item) {
         item->_prevmsg = item->_lastmsg;
         item->_lastmsg = msg;
-        item->_hasProtocolMsg = entry.hasProtocolMessage;
-        if (entry.hasProtocolMessage) {
+
+        // Only update protocol state on Completed (new decode) or Ignored (frame
+        // not part of any known protocol).  When Consumed (multi-frame in progress),
+        // keep the previous completed decode so the display doesn't flicker between
+        // protocol-decoded info and raw data.
+        if (entry.decodeStatus == DecodeStatus::Completed) {
+            item->_hasProtocolMsg = true;
             item->_lastProtocolMsg = entry.protocolMessage;
+        } else if (entry.decodeStatus == DecodeStatus::Ignored) {
+            item->_hasProtocolMsg = false;
         }
+        // DecodeStatus::Consumed: keep existing _hasProtocolMsg and _lastProtocolMsg
     }
 }
 
@@ -202,7 +210,9 @@ void AggregatedTraceViewModel::beforeAppend(int num_messages)
         entry.msg = trace->getMessage(i);
 
         ProtocolMessage pmsg;
-        if (_protocolManager.processFrame(entry.msg, pmsg) == DecodeStatus::Completed) {
+        DecodeStatus status = _protocolManager.processFrame(entry.msg, pmsg);
+        entry.decodeStatus = status;
+        if (status == DecodeStatus::Completed) {
             entry.hasProtocolMessage = true;
             entry.protocolMessage = pmsg;
         }
@@ -332,14 +342,6 @@ QVariant AggregatedTraceViewModel::data_DisplayRole(const QModelIndex &index, in
                         return pmsg.description;
                     }
                     break;
-                case column_data:
-                {
-                    const QString payload = formatProtocolPayload(pmsg.payload);
-                    if (!payload.isEmpty()) {
-                        return payload;
-                    }
-                    break;
-                }
                 case column_sender:
                     if (pmsg.protocol.compare(QStringLiteral("uds"), Qt::CaseInsensitive) == 0) {
                         return (pmsg.type == MessageType::Request) ? tr("Tester") : tr("ECU");
