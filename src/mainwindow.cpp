@@ -518,6 +518,21 @@ bool MainWindow::loadWorkspaceTab(QDomElement el)
         if (graph && !graphEl.isNull())
             graph->loadXML(backend(), graphEl);
 
+        // Recreate LinControlWindow dock if it was open, and restore diag requests.
+        QDomElement linEl = el.firstChildElement("lincontrolwindow");
+        if (!linEl.isNull())
+        {
+            QDockWidget *linDock = addLinControlWidget(mw);
+            LinControlWindow *lin = linDock ? qobject_cast<LinControlWindow *>(linDock->widget()) : nullptr;
+            if (lin)
+                lin->loadXML(backend(), linEl);
+        }
+
+        // Recreate GpioControlWindow dock if it was open.
+        QDomElement gpioEl = el.firstChildElement("gpiocontrolwindow");
+        if (!gpioEl.isNull())
+            addGpioControlWidget(mw);
+
         // Restore dock layout state (splits, tabification, sizes).
         // Deferred so it runs after the default layout timer from createTraceWindow().
         const QString dockState = el.attribute("dockstate");
@@ -663,6 +678,24 @@ bool MainWindow::saveWorkspaceToFile(const QString &filename)
             QDomElement graphEl = doc.createElement("graphwindow");
             graph->saveXML(backend(), doc, graphEl);
             tabEl.appendChild(graphEl);
+        }
+
+        // Save LinControlWindow dock content (diag requests) if present.
+        LinControlWindow *lin = w->findChild<LinControlWindow *>();
+        if (lin)
+        {
+            QDomElement linEl = doc.createElement("lincontrolwindow");
+            lin->saveXML(backend(), doc, linEl);
+            tabEl.appendChild(linEl);
+        }
+
+        // Save GpioControlWindow dock if present (marks it should be reopened).
+        GpioControlWindow *gpio = w->findChild<GpioControlWindow *>();
+        if (gpio)
+        {
+            QDomElement gpioEl = doc.createElement("gpiocontrolwindow");
+            gpio->saveXML(backend(), doc, gpioEl);
+            tabEl.appendChild(gpioEl);
         }
 
         tabsRoot.appendChild(tabEl);

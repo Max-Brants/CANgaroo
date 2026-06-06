@@ -370,6 +370,7 @@ void GrIPInterface::open()
             m_GrIPHandler->CanSetConfig(_channel_idx, arbBaud, _settings.isListenOnlyMode(), true, _settings.doAutoRestart());
         }
 
+        QThread::msleep(20);
         m_GrIPHandler->CanEnableChannel(_channel_idx, true);
     }
     else if (_manufacturer == CANIL_LIN)
@@ -403,14 +404,14 @@ void GrIPInterface::open()
                     timing.nAsMs,
                     timing.nCrMs
                 );
-                QThread::msleep(2);
+                QThread::msleep(5);
 
                 const int tableCount = ldb.scheduleTableNames().size();
 
                 for (int tableIndex = 0; tableIndex < tableCount; ++tableIndex)
                 {
                     m_GrIPHandler->LinSetScheduleTable(_channel_idx, static_cast<uint8_t>(tableIndex));
-                    QThread::msleep(1);
+                    QThread::msleep(2);
 
                     const auto entries = ldb.scheduleTableEntries(tableIndex);
                     for (const LinScheduleEntry &entry : entries)
@@ -440,8 +441,9 @@ void GrIPInterface::open()
 
                 // Activate the user-selected schedule table last
                 m_GrIPHandler->LinSetScheduleTable(_channel_idx, _settings.linScheduleTableIndex());
-                QThread::msleep(1);
+                QThread::msleep(2);
             }
+            QThread::msleep(10);
 
             m_GrIPHandler->LinEnableChannel(_channel_idx, true);
         }

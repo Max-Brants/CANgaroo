@@ -60,6 +60,7 @@ private slots:
     void rebuildRows();
     void clearRows();
     void onAddDiagRequest();
+    void onEditDiagRequest();
     void onRemoveDiagRequest();
     void onSendDiagRequest(QListWidgetItem *item);
 
@@ -75,5 +76,6 @@ private:
     QList<LinDiagRequest> _diagRequests;
     QListWidget           *_diagList   {nullptr};
     QPushButton           *_btnAdd     {nullptr};
+    QPushButton           *_btnEdit    {nullptr};
     QPushButton           *_btnRemove  {nullptr};
 };

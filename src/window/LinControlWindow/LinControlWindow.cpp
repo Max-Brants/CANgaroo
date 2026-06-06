@@ -74,10 +74,13 @@ LinControlWindow::LinControlWindow(QWidget *parent, Backend &backend)
     diagRow->addWidget(_diagList);
 
     auto *diagButtons = new QVBoxLayout;
-    _btnAdd    = new QPushButton(tr("Add..."), this);
-    _btnRemove = new QPushButton(tr("Remove"), this);
+    _btnAdd    = new QPushButton(tr("Add..."),  this);
+    _btnEdit   = new QPushButton(tr("Edit..."), this);
+    _btnRemove = new QPushButton(tr("Remove"),  this);
+    _btnEdit->setEnabled(false);
     _btnRemove->setEnabled(false);
     diagButtons->addWidget(_btnAdd);
+    diagButtons->addWidget(_btnEdit);
     diagButtons->addWidget(_btnRemove);
     diagButtons->addStretch();
     diagRow->addLayout(diagButtons);
@@ -88,9 +91,11 @@ LinControlWindow::LinControlWindow(QWidget *parent, Backend &backend)
     connect(&_backend, &Backend::endMeasurement,   this, &LinControlWindow::clearRows);
 
     connect(_btnAdd,    &QPushButton::clicked, this, &LinControlWindow::onAddDiagRequest);
+    connect(_btnEdit,   &QPushButton::clicked, this, &LinControlWindow::onEditDiagRequest);
     connect(_btnRemove, &QPushButton::clicked, this, &LinControlWindow::onRemoveDiagRequest);
 
     connect(_diagList, &QListWidget::currentRowChanged, this, [this](int row) {
+        _btnEdit->setEnabled(row >= 0);
         _btnRemove->setEnabled(row >= 0);
     });
     connect(_diagList, &QListWidget::itemDoubleClicked,
@@ -179,6 +184,25 @@ void LinControlWindow::onAddDiagRequest()
 
     _diagRequests.append(req);
     _diagList->addItem(req.name);
+}
+
+void LinControlWindow::onEditDiagRequest()
+{
+    const int row = _diagList->currentRow();
+    if (row < 0 || row >= _diagRequests.size())
+        return;
+
+    LinDiagRequestDialog dlg(this, _backend, &_diagRequests[row]);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    LinDiagRequest &req = _diagRequests[row];
+    req.name        = dlg.name();
+    req.interfaceId = dlg.interfaceId();
+    req.nad         = dlg.nad();
+    req.data        = dlg.data();
+
+    _diagList->item(row)->setText(req.name);
 }
 
 void LinControlWindow::onRemoveDiagRequest()

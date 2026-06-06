@@ -29,7 +29,6 @@
 
 class Backend;
 class GrIPHandler;
-class QCheckBox;
 class QComboBox;
 class QLabel;
 class QPushButton;
@@ -49,9 +48,9 @@ struct GpioDevicePanel
 {
     GrIPHandler       *handler;
     QWidget           *container;
-    QCheckBox         *enableChk;
-    QSpinBox          *cycleSpin; // 5-255 ms; 0 = disabled
-    QPushButton       *applyBtn;
+    QPushButton       *toggleBtn;
+    QSpinBox          *cycleSpin; // update interval in ms (5-255)
+    bool               enabled{false};
     QList<GpioPinRow>  pinRows;   // always 16 entries
     uint16_t           outputMask{0};
     uint16_t           dirMask{0};
@@ -74,7 +73,7 @@ private slots:
 
 private:
     void buildDevicePanel(GrIPHandler *handler, const QString &deviceName);
-    void onApplyClicked(GpioDevicePanel *panel);
+    void onToggleClicked(GpioDevicePanel *panel);
     void onOutputToggled(GpioDevicePanel *panel, int pin);
     void onGpioUpdated(GpioDevicePanel *panel, uint16_t pinState,
                        const QVector<uint16_t> &analogValues);

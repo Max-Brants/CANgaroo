@@ -493,7 +493,7 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
                 if (msg.isBRS())      t += QStringLiteral(".BRS");
                 return t;
             }
-            case column_canid: return QString("0x%1").arg(msg.getId(), 0, 16);
+            case column_canid: return QString("0x%1").arg(msg.getId(), 0, 16).toUpper();
             case column_dlc: return msg.getLength();
             case column_data: return msg.getDataHexString();
             case column_name:

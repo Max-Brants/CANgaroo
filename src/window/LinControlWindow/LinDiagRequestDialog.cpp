@@ -79,11 +79,13 @@ LinDiagRequestDialog::LinDiagRequestDialog(QWidget *parent, Backend &backend,
     form->addRow(tr("NAD:"), nadContainer);
 
     _dataEdit = new QLineEdit(this);
-    _dataEdit->setPlaceholderText(tr("Hex bytes, e.g. 06 B2 00 00 00 00"));
+    _dataEdit->setPlaceholderText(tr("SID + params (no PCI), e.g. 22 F1 90"));
+    _dataEdit->setToolTip(tr("Service data bytes starting with the SID (max 6 bytes).\n"
+                             "The PCI byte is added automatically — do not include it."));
     // Accept hex pairs separated by optional spaces
     _dataEdit->setValidator(new QRegularExpressionValidator(
         QRegularExpression("^([0-9A-Fa-f]{2}\\s*)*$"), this));
-    form->addRow(tr("Data:"), _dataEdit);
+    form->addRow(tr("Data (SID + params):"), _dataEdit);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
 

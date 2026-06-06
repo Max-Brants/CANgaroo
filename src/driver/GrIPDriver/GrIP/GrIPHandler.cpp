@@ -123,6 +123,14 @@ typedef struct __attribute__((packed))
     uint8_t Channel2; // Enable state for channel 1 (0 = off, 1 = on)
 } Protocol_ChannelStatus_t;
 
+// Payload for SYSTEM_START_LIN — enables or disables a single LIN channel by index.
+typedef struct __attribute__((packed))
+{
+    Protocol_SystemHeader_t Header;
+    uint8_t Channel; // Zero-based LIN channel index
+    uint8_t Enable;  // 1 = start, 0 = stop
+} Protocol_ChannelEnable_t;
+
 typedef struct __attribute__((packed))
 {
     Protocol_SystemHeader_t Header;
@@ -478,32 +486,25 @@ void GrIPHandler::CanEnableChannel(uint8_t ch, bool enable)
 
 void GrIPHandler::LinEnableChannel(uint8_t ch, bool enable)
 {
-    Protocol_ChannelStatus_t status = {};
+    if (ch >= m_Channel_StatusLIN.size())
+        return;
 
-    status.Header.Version = GRIP_HEADER_VERSION;
-    status.Header.Command = SYSTEM_START_LIN;
-    status.Header.Length = 2;
-    status.Header.Data = 0;
+    Protocol_ChannelEnable_t cmd = {};
+    cmd.Header.Version = GRIP_HEADER_VERSION;
+    cmd.Header.Command = SYSTEM_START_LIN;
+    cmd.Header.Length  = 2; // sizeof(Channel) + sizeof(Enable)
+    cmd.Channel        = ch;
+    cmd.Enable         = enable ? 1u : 0u;
 
-    GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&status), sizeof(Protocol_ChannelStatus_t)};
+    GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&cmd), sizeof(Protocol_ChannelEnable_t)};
 
-    if (ch < m_Channel_StatusLIN.size())
     {
-        // Update local shadow and rebuild the full channel state word.
-        // The firmware expects the enable state of all channels at once,
-        // not just the one being changed. Protect the channel vector with
-        // m_MutexData.
-        {
-            std::unique_lock<std::mutex> dataLck(m_MutexData);
-            m_Channel_StatusLIN[ch] = enable;
-            status.Channel1 = m_Channel_StatusLIN.size() > 0 ? m_Channel_StatusLIN[0] : 0;
-            status.Channel2 = m_Channel_StatusLIN.size() > 1 ? m_Channel_StatusLIN[1] : 0;
-        }
-
-        std::unique_lock<std::mutex> lck(m_MutexSerial);
-
-        std::ignore = GrIP_Transmit(PROT_GrIP, MSG_SYSTEM_CMD, RET_OK, &p);
+        std::unique_lock<std::mutex> dataLck(m_MutexData);
+        m_Channel_StatusLIN[ch] = enable;
     }
+
+    std::unique_lock<std::mutex> lck(m_MutexSerial);
+    std::ignore = GrIP_Transmit(PROT_GrIP, MSG_SYSTEM_CMD, RET_OK, &p);
 }
 
 void GrIPHandler::CanSetMode(uint8_t ch, bool listen_only)
@@ -665,6 +666,7 @@ void GrIPHandler::LinSendDiagRequest(uint8_t ch, uint8_t nad, const uint8_t *dat
         return;
 
     // Wire layout after the 4-byte system header: [Channel, NAD, SID, d0, ...]
+    // The firmware adds the PCI byte automatically based on payload length.
     // Total PDU = header (4) + Channel (1) + NAD (1) + payload (len)
     const uint16_t pduLen = static_cast<uint16_t>(sizeof(Protocol_SystemHeader_t) + 2u + len);
     std::vector<uint8_t> buf(pduLen, 0u);
