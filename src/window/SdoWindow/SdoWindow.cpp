@@ -494,6 +494,7 @@ void SdoWindow::onWriteClicked()
     const QString script = buildWriteScript(entry->index, entry->subIndex,
                                             interfaceId, _nodeSpin->value(), payload);
     setBusy(QStringLiteral("write"), tr("Writing %1...").arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex)));
+    _pendingWritePayload = payload;
     _engine->runScript(script);
 }
 
@@ -549,7 +550,10 @@ void SdoWindow::onScriptError(const QString &text)
 {
     const QString msg = text.trimmed();
     if (!msg.isEmpty())
+    {
+        _busyHadError = true;
         setStatusMessage(msg, true);
+    }
 }
 
 void SdoWindow::onScriptStarted()
@@ -559,12 +563,12 @@ void SdoWindow::onScriptStarted()
 
 void SdoWindow::onScriptFinished()
 {
-    clearBusy();
     if (!_outputBuffer.trimmed().isEmpty())
     {
         handleScriptLine(_outputBuffer.trimmed());
         _outputBuffer.clear();
     }
+    clearBusy();
     updateActionState();
 }
 
@@ -871,9 +875,22 @@ void SdoWindow::setStatusMessage(const QString &text, bool error)
 
 void SdoWindow::setBusy(const QString &command, const QString &message)
 {
-    Q_UNUSED(command);
+    _busyCommand = command;
+    _busyHadError = false;
     _outputBuffer.clear();
-    _progressBar->setRange(0, 0);
+    _pendingWritePayload.clear();
+    if (command == QStringLiteral("domain"))
+    {
+        _progressBar->setTextVisible(true);
+        _progressBar->setFormat(tr("%p% uploaded"));
+        _progressBar->setRange(0, 100);
+        _progressBar->setValue(0);
+    }
+    else
+    {
+        _progressBar->setTextVisible(false);
+        _progressBar->setRange(0, 0);
+    }
     _lastTransferData.clear();
     _btnSaveToFile->setEnabled(false);
     setStatusMessage(message);
@@ -881,6 +898,14 @@ void SdoWindow::setBusy(const QString &command, const QString &message)
 
 void SdoWindow::clearBusy()
 {
+    if (_busyCommand == QStringLiteral("domain"))
+    {
+        _progressBar->setRange(0, 100);
+        _progressBar->setValue(_busyHadError ? 0 : 100);
+        return;
+    }
+
+    _progressBar->setTextVisible(false);
     _progressBar->setRange(0, 1);
     _progressBar->setValue(1);
 }
@@ -898,6 +923,7 @@ void SdoWindow::handleScriptLine(const QString &line)
 {
     static const QString resultPrefix = QStringLiteral("CANGAROO_SDO_JSON:");
     static const QString errorPrefix = QStringLiteral("CANGAROO_SDO_ERROR:");
+    static const QString progressPrefix = QStringLiteral("CANGAROO_SDO_PROGRESS:");
 
     if (line.startsWith(resultPrefix))
     {
@@ -909,8 +935,34 @@ void SdoWindow::handleScriptLine(const QString &line)
         handleResultPayload(line.mid(errorPrefix.size()).toUtf8(), true);
         return;
     }
+    if (line.startsWith(progressPrefix))
+    {
+        handleProgressPayload(line.mid(progressPrefix.size()).toUtf8());
+        return;
+    }
 
     appendResultText(line);
+}
+
+void SdoWindow::handleProgressPayload(const QByteArray &jsonData)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(jsonData);
+    if (!doc.isObject())
+        return;
+
+    const QJsonObject obj = doc.object();
+    if (obj.value(QStringLiteral("cmd")).toString() != QStringLiteral("domain"))
+        return;
+
+    const int percent = qBound(0, obj.value(QStringLiteral("percent")).toInt(), 100);
+    const quint16 index = static_cast<quint16>(obj.value(QStringLiteral("index")).toInt());
+    const quint8 subIndex = static_cast<quint8>(obj.value(QStringLiteral("sub_index")).toInt());
+
+    _progressBar->setTextVisible(true);
+    _progressBar->setFormat(tr("%p% uploaded"));
+    _progressBar->setRange(0, 100);
+    _progressBar->setValue(percent);
+    setStatusMessage(tr("Uploading %1... %2%").arg(CanOpenDb::formatObjectKey(index, subIndex)).arg(percent));
 }
 
 void SdoWindow::handleResultPayload(const QByteArray &jsonData, bool errorPayload)
@@ -929,21 +981,22 @@ void SdoWindow::handleResultPayload(const QByteArray &jsonData, bool errorPayloa
 
     if (errorPayload)
     {
+        _busyHadError = true;
+        _pendingWritePayload.clear();
         setStatusMessage(obj.value(QStringLiteral("message")).toString(), true);
         return;
     }
 
     if (command == QStringLiteral("write"))
     {
-        const QByteArray payload = QByteArray::fromBase64(obj.value(QStringLiteral("base64")).toString().toLatin1());
+        const QByteArray payload = _pendingWritePayload;
         const CanOpenDb *db = currentDb();
         const CanOpenObjectEntry *entry = db ? db->findObject(index, subIndex) : nullptr;
         if (entry)
-        {
             updateCurrentValue(index, subIndex, decodeValueForDisplay(*entry, payload));
-            _resultView->setPlainText(buildTransferText(*entry, payload));
-        }
         setStatusMessage(tr("Write successful: %1 bytes transferred.").arg(payload.size()));
+        _resultView->setPlainText(tr("Write successful: %1 bytes transferred.").arg(payload.size()));
+        _pendingWritePayload.clear();
         return;
     }
 
@@ -1164,11 +1217,11 @@ QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfac
         byteParts << QString::number(static_cast<unsigned char>(byte));
 
     return QString(
-        "import base64, json, cangaroo\n"
+        "import json, cangaroo\n"
         "payload = bytes([%1])\n"
         "try:\n"
         "    res = cangaroo.sdo_write(node_id=%2, index=%3, sub_index=%4, value=payload, size=None, interface_id=%5, timeout=1.0)\n"
-        "    print('CANGAROO_SDO_JSON:' + json.dumps({'cmd': 'write', 'node_id': res['node_id'], 'index': res['index'], 'sub_index': res['sub_index'], 'size': res['size'], 'raw': res['raw'], 'base64': base64.b64encode(payload).decode('ascii')}))\n"
+        "    print('CANGAROO_SDO_JSON:' + json.dumps({'cmd': 'write', 'node_id': res['node_id'], 'index': res['index'], 'sub_index': res['sub_index'], 'size': res['size'], 'raw': res['raw']}))\n"
         "except Exception as exc:\n"
         "    print('CANGAROO_SDO_ERROR:' + json.dumps({'cmd': 'write', 'index': %3, 'sub_index': %4, 'message': str(exc)}))\n")
         .arg(byteParts.join(QStringLiteral(", ")))
