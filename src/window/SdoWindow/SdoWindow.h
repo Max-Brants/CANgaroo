@@ -116,5 +116,5 @@ private:
     const CanOpenObjectEntry *currentObject() const;
     bool prepareWritePayload(const CanOpenObjectEntry &entry, QByteArray &payload, QString &errorMessage) const;
     QString buildReadScript(const QString &command, quint16 index, quint8 subIndex, int interfaceId, int nodeId, double timeoutSec) const;
-    QString buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload) const;
+    QString buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload, double timeoutSec, bool forceSegment = false) const;
 };

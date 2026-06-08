@@ -10,6 +10,7 @@
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QHBoxLayout>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -102,6 +103,11 @@ bool isHexType(const CanOpenObjectEntry &entry)
 bool isDomainType(const CanOpenObjectEntry &entry)
 {
     return entry.dataType == 0x000F;
+}
+
+QString jsonQuoted(const QByteArray &value)
+{
+    return QStringLiteral("\"%1\"").arg(QString::fromLatin1(value.toBase64()));
 }
 
 int byteWidth(const CanOpenObjectEntry &entry)
@@ -306,7 +312,7 @@ SdoWindow::SdoWindow(QWidget *parent, Backend &backend)
     auto *buttonLayout = new QHBoxLayout();
     _btnRead = new QPushButton(tr("Read"), rightPanel);
     _btnWrite = new QPushButton(tr("Write"), rightPanel);
-    _btnDomainUpload = new QPushButton(tr("Domain Upload"), rightPanel);
+    _btnDomainUpload = new QPushButton(tr("Domain Download"), rightPanel);
     _btnSaveToFile = new QPushButton(tr("Save to File"), rightPanel);
     buttonLayout->addWidget(_btnRead);
     buttonLayout->addWidget(_btnWrite);
@@ -421,7 +427,7 @@ void SdoWindow::retranslateUi()
 {
     _btnRead->setText(tr("Read"));
     _btnWrite->setText(tr("Write"));
-    _btnDomainUpload->setText(tr("Domain Upload"));
+    _btnDomainUpload->setText(tr("Domain Download"));
     _btnSaveToFile->setText(tr("Save to File"));
 }
 
@@ -492,7 +498,7 @@ void SdoWindow::onWriteClicked()
 
     const int interfaceId = _interfaceCombo->currentData().toInt();
     const QString script = buildWriteScript(entry->index, entry->subIndex,
-                                            interfaceId, _nodeSpin->value(), payload);
+                                            interfaceId, _nodeSpin->value(), payload, 1.0, false);
     setBusy(QStringLiteral("write"), tr("Writing %1...").arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex)));
     _pendingWritePayload = payload;
     _engine->runScript(script);
@@ -501,13 +507,31 @@ void SdoWindow::onWriteClicked()
 void SdoWindow::onDomainUploadClicked()
 {
     const CanOpenObjectEntry *entry = currentObject();
-    if (!entry)
+    if (!entry || !isDomainType(*entry) || !_engine)
         return;
 
     const int interfaceId = _interfaceCombo->currentData().toInt();
-    const QString script = buildReadScript(QStringLiteral("domain"), entry->index, entry->subIndex,
-                                           interfaceId, _nodeSpin->value(), 5.0);
-    setBusy(QStringLiteral("domain"), tr("Uploading %1...").arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex)));
+    if (!accessAllowsWrite(entry->accessType) || interfaceId < 0)
+        return;
+
+    const QString fileName = QFileDialog::getOpenFileName(this, tr("Select Domain Data"));
+    if (fileName.isEmpty())
+        return;
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        setStatusMessage(tr("Cannot open file for reading."), true);
+        return;
+    }
+
+    const QByteArray payload = file.readAll();
+    const QString script = buildWriteScript(entry->index, entry->subIndex,
+                                            interfaceId, _nodeSpin->value(), payload, 10.0, true);
+    setBusy(QStringLiteral("domain-download"),
+            tr("Downloading %1 to device (%2 bytes)...")
+                .arg(CanOpenDb::formatObjectKey(entry->index, entry->subIndex))
+                .arg(payload.size()));
     _engine->runScript(script);
 }
 
@@ -810,14 +834,17 @@ void SdoWindow::updateEditorForSelection()
         _textEditor->setText(currentValue);
         _editorHintLabel->setText(tr("Text editor (expedited writes up to 4 bytes)"));
     }
+    else if (isDomainType(*entry))
+    {
+        _editorStack->setCurrentIndex(EditorNone);
+        _editorHintLabel->setText(tr("Use Domain Download to send a file to the device."));
+    }
     else if (isHexType(*entry))
     {
         _editorStack->setCurrentIndex(EditorHex);
         _hexEditor->setText(currentValue);
         _hexEditor->setPlaceholderText(tr("AA BB CC DD"));
-        _editorHintLabel->setText(isDomainType(*entry)
-            ? tr("Domain upload is supported; writes are limited to expedited transfers (no segmented download yet).")
-            : tr("Hex byte editor (expedited writes up to 4 bytes)"));
+        _editorHintLabel->setText(tr("Hex byte editor (expedited writes up to 4 bytes)"));
     }
     else
     {
@@ -834,20 +861,24 @@ void SdoWindow::updateActionState()
     const bool measurementRunning = _backend->isMeasurementRunning();
     const bool engineIdle = !_engine->isRunning();
 
-    const bool canRead = hasObject && accessAllowsRead(entry->accessType) && interfaceAvailable && measurementRunning && engineIdle;
+    const bool domainObject = hasObject && isDomainType(*entry);
+    const bool canRead = hasObject && !domainObject && accessAllowsRead(entry->accessType) && interfaceAvailable && measurementRunning && engineIdle;
     const bool canWrite = hasObject
+        && !domainObject
         && accessAllowsWrite(entry->accessType)
         && interfaceAvailable
         && measurementRunning
         && engineIdle
         && ((isBooleanType(*entry))
             || ((isIntegerType(*entry) || isTextType(*entry) || isHexType(*entry)) && byteWidth(*entry) <= 4));
-    const bool canDomainUpload = hasObject && accessAllowsRead(entry->accessType) && interfaceAvailable && measurementRunning && engineIdle;
+    const bool canDomainUpload = hasObject && domainObject && accessAllowsWrite(entry->accessType) && interfaceAvailable && measurementRunning && engineIdle;
 
     _btnRead->setEnabled(canRead);
     _btnWrite->setEnabled(canWrite);
     _btnDomainUpload->setEnabled(canDomainUpload);
+    _btnDomainUpload->setVisible(domainObject);
     _btnSaveToFile->setEnabled(!_lastTransferData.isEmpty() && engineIdle);
+    _btnSaveToFile->setVisible(!_lastTransferData.isEmpty());
 
     QStringList warnings;
     if (!measurementRunning)
@@ -864,6 +895,14 @@ void SdoWindow::updateActionState()
                         .arg(db->configuredNodeId());
         }
     }
+    if (!hasObject)
+        warnings << tr("Select an object entry to continue.");
+    if (hasObject && !domainObject && !canRead)
+        warnings << tr("Read is only available for readable non-domain objects.");
+    if (hasObject && !domainObject && !canWrite)
+        warnings << tr("Write is limited to BOOLEAN, integer, text, or byte-array values up to 4 bytes.");
+    if (hasObject && domainObject && !canDomainUpload)
+        warnings << tr("Domain download requires a writable DOMAIN object, active measurement, and interface.");
     _warningLabel->setText(warnings.join(QLatin1Char('\n')));
 }
 
@@ -1210,23 +1249,21 @@ QString SdoWindow::buildReadScript(const QString &command, quint16 index, quint8
         .arg(command);
 }
 
-QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload) const
+QString SdoWindow::buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload, double timeoutSec, bool forceSegment) const
 {
-    QStringList byteParts;
-    for (char byte : payload)
-        byteParts << QString::number(static_cast<unsigned char>(byte));
-
     return QString(
-        "import json, cangaroo\n"
-        "payload = bytes([%1])\n"
+        "import base64, json, cangaroo\n"
+        "payload = base64.b64decode(%1)\n"
         "try:\n"
-        "    res = cangaroo.sdo_write(node_id=%2, index=%3, sub_index=%4, value=payload, size=None, interface_id=%5, timeout=1.0)\n"
-        "    print('CANGAROO_SDO_JSON:' + json.dumps({'cmd': 'write', 'node_id': res['node_id'], 'index': res['index'], 'sub_index': res['sub_index'], 'size': res['size'], 'raw': res['raw']}))\n"
+        "    res = cangaroo.sdo_write(node_id=%2, index=%3, sub_index=%4, value=payload, size=None, interface_id=%5, timeout=%6, force_segment=%7)\n"
+        "    print('CANGAROO_SDO_JSON:' + json.dumps({'cmd': 'write', 'node_id': res['node_id'], 'index': res['index'], 'sub_index': res['sub_index'], 'size': res['size'], 'raw': res['raw'], 'base64': base64.b64encode(payload).decode('ascii')}))\n"
         "except Exception as exc:\n"
         "    print('CANGAROO_SDO_ERROR:' + json.dumps({'cmd': 'write', 'index': %3, 'sub_index': %4, 'message': str(exc)}))\n")
-        .arg(byteParts.join(QStringLiteral(", ")))
+        .arg(jsonQuoted(payload))
         .arg(nodeId)
         .arg(index)
         .arg(subIndex)
-        .arg(interfaceId);
+        .arg(interfaceId)
+        .arg(QString::number(timeoutSec, 'f', 2))
+        .arg(forceSegment ? QStringLiteral("True") : QStringLiteral("False"));
 }
