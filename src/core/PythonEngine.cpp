@@ -44,6 +44,18 @@ using namespace py::literals;
 // ---------------------------------------------------------------------------
 static PythonEngine *g_activeEngine = nullptr;
 
+static void emitScriptOutputLine(PythonEngine *engine, const QString &text)
+{
+    if (!engine) {
+        return;
+    }
+
+    QMetaObject::invokeMethod(engine, [engine, text]()
+    {
+        emit engine->scriptOutput(text);
+    }, Qt::QueuedConnection);
+}
+
 // ---------------------------------------------------------------------------
 // Helper: pack a raw value into a BusMessage at the given signal position.
 // This is the inverse of BusMessage::extractRawSignal.
@@ -711,6 +723,16 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
             bool toggle = false;
             bool done = false;
+            int lastPercent = -1;
+            if (expectedSize.has_value() && *expectedSize > 0)
+            {
+                emitScriptOutputLine(g_activeEngine,
+                                     QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain\",\"index\":%1,\"sub_index\":%2,\"received\":0,\"total\":%3,\"percent\":0}\n")
+                                         .arg(index)
+                                         .arg(sub_index)
+                                         .arg(*expectedSize));
+                lastPercent = 0;
+            }
             while (!done)
             {
                 BusMessage segReq;
@@ -759,6 +781,24 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
                 for (int i = 0; i < copyBytes; ++i)
                 {
                     payload.push_back(static_cast<char>(segResp.getByte(1 + i)));
+                }
+
+                if (expectedSize.has_value() && *expectedSize > 0)
+                {
+                    const int percent = qBound(0,
+                                               static_cast<int>((payload.size() * 100ULL) / static_cast<size_t>(*expectedSize)),
+                                               100);
+                    if (percent != lastPercent)
+                    {
+                        emitScriptOutputLine(g_activeEngine,
+                                             QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain\",\"index\":%1,\"sub_index\":%2,\"received\":%3,\"total\":%4,\"percent\":%5}\n")
+                                                 .arg(index)
+                                                 .arg(sub_index)
+                                                 .arg(static_cast<qulonglong>(payload.size()))
+                                                 .arg(*expectedSize)
+                                                 .arg(percent));
+                        lastPercent = percent;
+                    }
                 }
 
                 done = (segCs & 0x01) != 0;

@@ -83,8 +83,11 @@ private:
     QLabel *_warningLabel;
     QLabel *_editorHintLabel;
 
+    QString _busyCommand;
+    bool _busyHadError = false;
     QString _outputBuffer;
     QByteArray _lastTransferData;
+    QByteArray _pendingWritePayload;
 
     void populateNetworks(const QString &preferredNetwork = QString(),
                           const QString &preferredDbPath = QString(),
@@ -103,6 +106,7 @@ private:
     void clearBusy();
     void appendResultText(const QString &text);
     void handleScriptLine(const QString &line);
+    void handleProgressPayload(const QByteArray &jsonData);
     void handleResultPayload(const QByteArray &jsonData, bool errorPayload);
     void updateCurrentValue(quint16 index, quint8 subIndex, const QString &valueText);
     void selectObjectKey(const QString &objectKey);
