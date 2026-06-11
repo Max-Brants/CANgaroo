@@ -57,6 +57,11 @@ void DataColumnDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
     const bool isDark = ThemeManager::instance().isDarkMode();
     const QColor changedColor = isDark ? QColor(210, 120, 0) : QColor(180, 90, 0);
 
+    // Error color (from ForegroundRole) takes priority over changed-byte color.
+    const QVariant fgVariant = index.data(Qt::ForegroundRole);
+    const bool hasErrorColor = fgVariant.isValid();
+    const QColor errorColor  = hasErrorColor ? fgVariant.value<QColor>() : QColor();
+
     constexpr int drawFlags = Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine;
 
     painter->save();
@@ -67,8 +72,8 @@ void DataColumnDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
     const QStringList tokens = text.split(QLatin1Char(' '));
     int x = textRect.left() + textMargin;
     for (int i = 0; i < tokens.size(); ++i) {
-        const bool changed = (i < 64) && ((changedMask >> i) & 1ULL);
-        painter->setPen(changed ? changedColor : normalColor);
+        const bool changed = !hasErrorColor && (i < 64) && ((changedMask >> i) & 1ULL);
+        painter->setPen(hasErrorColor ? errorColor : (changed ? changedColor : normalColor));
 
         const int tokenWidth = fm.horizontalAdvance(tokens.at(i));
         painter->drawText(QRect(x, textRect.top(), tokenWidth, textRect.height()),
@@ -77,7 +82,7 @@ void DataColumnDelegate::paint(QPainter *painter, const QStyleOptionViewItem &op
 
         if (i < tokens.size() - 1) {
             const int spaceWidth = fm.horizontalAdvance(QLatin1Char(' '));
-            painter->setPen(normalColor);
+            painter->setPen(hasErrorColor ? errorColor : normalColor);
             painter->drawText(QRect(x, textRect.top(), spaceWidth, textRect.height()),
                               drawFlags, QStringLiteral(" "));
             x += spaceWidth;

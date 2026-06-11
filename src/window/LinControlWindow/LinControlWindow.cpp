@@ -183,7 +183,8 @@ void LinControlWindow::onAddDiagRequest()
     req.data        = dlg.data();
 
     _diagRequests.append(req);
-    _diagList->addItem(req.name);
+    const QString ifaceName = _backend.getInterfaceName(req.interfaceId);
+    _diagList->addItem(ifaceName.isEmpty() ? req.name : QStringLiteral("[%1]   %2").arg(ifaceName, req.name));
 }
 
 void LinControlWindow::onEditDiagRequest()
@@ -202,7 +203,8 @@ void LinControlWindow::onEditDiagRequest()
     req.nad         = dlg.nad();
     req.data        = dlg.data();
 
-    _diagList->item(row)->setText(req.name);
+    const QString ifaceName = _backend.getInterfaceName(req.interfaceId);
+    _diagList->item(row)->setText(ifaceName.isEmpty() ? req.name : QStringLiteral("[%1]   %2").arg(ifaceName, req.name));
 }
 
 void LinControlWindow::onRemoveDiagRequest()
@@ -270,7 +272,8 @@ bool LinControlWindow::loadXML(Backend &backend, QDomElement &el)
         req.data        = QByteArray::fromHex(e.attribute("data").toLatin1());
 
         _diagRequests.append(req);
-        _diagList->addItem(req.name);
+        const QString ifaceName = _backend.getInterfaceName(req.interfaceId);
+        _diagList->addItem(ifaceName.isEmpty() ? req.name : QStringLiteral("[%1]   %2").arg(ifaceName, req.name));
     }
 
     return true;

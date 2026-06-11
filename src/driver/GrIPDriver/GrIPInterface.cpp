@@ -397,6 +397,8 @@ void GrIPInterface::open()
                 const QString diagNode  = isMaster ? ldb.slaveNodes().value(0) : slaveNode;
                 const LinDiagTiming timing = ldb.diagTiming(diagNode);
 
+                const uint8_t slaveNad = static_cast<uint8_t>(ldb.nodeNad(diagNode));
+
                 m_GrIPHandler->LinSetConfig(
                     _channel_idx,
                     _settings.linBaudRate(),
@@ -407,7 +409,8 @@ void GrIPInterface::open()
                     timing.stMinMs,
                     timing.p2MinMs,
                     timing.nAsMs,
-                    timing.nCrMs
+                    timing.nCrMs,
+                    slaveNad
                 );
                 QThread::msleep(5);
 

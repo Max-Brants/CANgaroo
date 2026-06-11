@@ -1011,6 +1011,29 @@ LDF (\textit{LIN Description File}) describes LIN bus networks. The parser suppo
   \item LIN enhanced checksum calculation for correct ASC export
 \end{itemize}
 
+\subsection{LIN Diagnostics}
+
+LIN-capable interfaces expose a diagnostics API for node configuration and
+identification (as defined by LIN specification section~4.2).
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Diagnostic Request (master)]
+    \texttt{sendLinDiagRequest(nad, data, len)} sends a master-request frame
+    to the node with the given NAD (Node Address for Diagnostics, 0x01--0x7E).
+    The payload follows the LIN diagnostic frame format (up to 6 data bytes).
+
+  \item[Diagnostic Response (slave)]
+    \texttt{sendLinDiagResponse(nad, data, len)} sends a slave-response frame
+    on interfaces that advertise the \texttt{capability\_lin\_slave} flag.
+    Use this to answer a master request when CANgaroo is acting as a LIN slave node.
+\end{description}
+
+\begin{notebox}
+Both calls are no-ops on interfaces that do not support the corresponding
+LIN capability flag. Check the interface capabilities in the Setup Dialog
+before relying on diagnostic operations.
+\end{notebox}
+
 \subsection{Loading Databases}
 
 Databases are loaded per network in the Setup Dialog (Section~\ref{sec:setup}).

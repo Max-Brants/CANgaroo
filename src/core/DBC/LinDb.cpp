@@ -74,6 +74,11 @@ LinDiagTiming LinDb::diagTiming(const QString &nodeName) const
 {
     return _diagTimings.value(nodeName);
 }
+
+uint8_t LinDb::nodeNad(const QString &nodeName) const
+{
+    return _nodeNads.value(nodeName, 0u);
+}
 QString     LinDb::lastError()           const { return _lastError; }
 
 LinFrame *LinDb::frameById(uint8_t id) const
@@ -121,14 +126,23 @@ bool LinDb::loadFile(const QString &path)
         _slaveNodes.append(QString::fromStdString(slave));
 
     _diagTimings.clear();
+    _nodeNads.clear();
     for (const auto &attr : ldf.node_attributes)
     {
+        const QString name = QString::fromStdString(attr.name);
+
         LinDiagTiming t;
         t.p2MinMs = static_cast<uint16_t>(attr.p2_min_s       * 1000.0);
         t.stMinMs = static_cast<uint16_t>(attr.st_min_s       * 1000.0);
         t.nAsMs   = static_cast<uint16_t>(attr.n_as_timeout_s * 1000.0);
         t.nCrMs   = static_cast<uint16_t>(attr.n_cr_timeout_s * 1000.0);
-        _diagTimings.insert(QString::fromStdString(attr.name), t);
+        _diagTimings.insert(name, t);
+
+        // Prefer configured_NAD if present, then initial_NAD, then NAD.
+        const uint8_t nad = attr.configured_nad.has_value() ? *attr.configured_nad
+                          : attr.initial_nad.has_value()    ? *attr.initial_nad
+                          : attr.nad;
+        _nodeNads.insert(name, nad);
     }
 
     _scheduleTableNames.clear();

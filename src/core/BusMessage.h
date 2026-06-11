@@ -45,8 +45,10 @@ enum class BusError : uint32_t
     Form      = 0x0010,
     BusOff    = 0x0020,
     Overrun   = 0x0040,
-    TxTimeout = 0x0080,
-    Generic   = 0x8000,
+    TxTimeout        = 0x0080,
+    LinNotResponded  = 0x0100,
+    LinChecksumError = 0x0200,
+    Generic          = 0x8000,
 };
 Q_DECLARE_FLAGS(BusErrors, BusError)
 Q_DECLARE_OPERATORS_FOR_FLAGS(BusErrors)

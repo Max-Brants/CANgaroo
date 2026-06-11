@@ -76,6 +76,9 @@ public:
     // Diagnostic timings for a node (returns defaults if node not found)
     LinDiagTiming diagTiming(const QString &nodeName) const;
 
+    // NAD (Node Address for Diagnostics) for a slave node (returns 0 if not found)
+    uint8_t nodeNad(const QString &nodeName) const;
+
     // Frame access
     LinFrame           *frameById(uint8_t id) const;
     LinFrame           *frameByName(const QString &name) const;
@@ -96,6 +99,7 @@ private:
     QStringList _scheduleTableNames;
     QVector<QVector<LinScheduleEntry>> _scheduleTables;
     QMap<QString, LinDiagTiming> _diagTimings;
+    QMap<QString, uint8_t>      _nodeNads;
     double      _masterTimebaseMs {0.0};
     double      _masterJitterMs   {0.0};
     QString     _lastError;

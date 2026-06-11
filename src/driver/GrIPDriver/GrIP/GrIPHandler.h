@@ -228,7 +228,8 @@ public:
     void LinSetConfig(uint8_t ch, uint32_t baud, uint8_t mode, uint8_t protocol,
                       uint8_t timebase, uint16_t jitter_us,
                       uint16_t diagSTmin_ms = 0, uint16_t diagP2min_ms = 25,
-                      uint16_t diagNAs_ms = 25, uint16_t diagNCr_ms = 1000);
+                      uint16_t diagNAs_ms = 25, uint16_t diagNCr_ms = 1000,
+                      uint8_t slaveNad = 0);
 
     /**
      * @brief Send a LIN transport-layer diagnostic master request (0x3C).

@@ -202,6 +202,7 @@ typedef struct __attribute__((packed))
     uint16_t DiagP2min_ms;   // Min delay before the 0x3D response slot
     uint16_t DiagNAs_ms;     // TX frame abort timeout
     uint16_t DiagNCr_ms;     // Response (0x3D) wait timeout
+    uint8_t  SlaveNAD;
 } Protocol_LinConfig_t;
 
 typedef struct __attribute__((packed))
@@ -651,7 +652,8 @@ void GrIPHandler::CanSetFdConfig(uint8_t ch, uint32_t arbBaud, uint32_t dataBaud
 void GrIPHandler::LinSetConfig(uint8_t ch, uint32_t baud, uint8_t mode, uint8_t protocol,
                                uint8_t timebase, uint16_t jitter_us,
                                uint16_t diagSTmin_ms, uint16_t diagP2min_ms,
-                               uint16_t diagNAs_ms, uint16_t diagNCr_ms)
+                               uint16_t diagNAs_ms, uint16_t diagNCr_ms,
+                               uint8_t slaveNad)
 {
     Protocol_LinConfig_t cfg = {};
 
@@ -670,6 +672,7 @@ void GrIPHandler::LinSetConfig(uint8_t ch, uint32_t baud, uint8_t mode, uint8_t 
     cfg.DiagP2min_ms = diagP2min_ms;
     cfg.DiagNAs_ms   = diagNAs_ms;
     cfg.DiagNCr_ms   = diagNCr_ms;
+    cfg.SlaveNAD     = slaveNad;
 
     GrIP_Pdu_t p = {reinterpret_cast<uint8_t *>(&cfg), sizeof(Protocol_LinConfig_t)};
 
@@ -1147,7 +1150,15 @@ void GrIPHandler::ProcessData(GrIP_Packet_t &packet, qint64 rxTimestamp_ms)
 
             BusMessage msg(frame.ID);
             msg.setBusType(BusType::LIN);
-            msg.setErrorFrame(!isNormal && !isSleepOrWakeup);
+            if (!isSleepOrWakeup)
+            {
+                const bool responded     = (frame.Flags & LIN_FLAG_RESPONDED)      != 0;
+                const bool validChecksum = (frame.Flags & LIN_FLAG_VALID_CHECKSUM) != 0;
+                if (!responded)
+                    msg.setErrorFlag(BusError::LinNotResponded);
+                else if (!validChecksum)
+                    msg.setErrorFlag(BusError::LinChecksumError);
+            }
             msg.setFlags(frame.Flags);
             msg.setLength(frame.DLC);
             msg.setRX(frame.Direction == 1); // 1 = subscriber response (RX), 0 = publisher echo (TX)

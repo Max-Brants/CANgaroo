@@ -27,7 +27,7 @@
 *   **Network Rights Management**: Per-network access control for bus interfaces.
 *   **Python Scripting**: Built-in script editor with an embedded Python interpreter (via pybind11). Send and receive CAN and LIN messages, decode signals using loaded DBC/LDF files, and automate tasks. Scripts can be started manually or automatically with the measurement. Ready-to-use example scripts are included in the `examples/` directory.
 *   **CAN Gateway**: Forward messages between two CAN interfaces with configurable per-message filter rules. Active during a running measurement.
-*   **LIN Control**: Send LIN Sleep/Wakeup commands to connected LIN-capable interfaces directly from the UI.
+*   **LIN Control**: Send LIN Sleep/Wakeup commands, switch schedule tables, and issue LIN diagnostic requests and responses (slave node) on LIN-capable interfaces directly from the UI.
 *   **Trace Replay**: Replay captured CAN logs (Vector ASC, candump, PCAP, and PCAPng formats) with adjustable speed, per-message RX/TX direction filtering, channel mapping to live interfaces, and optional autoplay with the measurement. Supports classic CAN, CAN-FD, RTR, and error frames.
 *   **Multiple Export Formats**: Save traces as Vector ASC, Vector MDF4, Linux candump, PCAP, or PCAPng (Wireshark-compatible).
 *   **Modern Workspace**: A clean, dockable userinterface optimized for multi-monitor setups.
