@@ -15,12 +15,12 @@
 | **SLCAN** | ✅ | ✅ | CANable (SLCAN firmware), Arduino CAN shields |
 | **CANblaster** | ✅ | ✅ | UDP-based remote CAN via [CANblaster](https://github.com/OpenAutoDiagLabs/CANblaster) |
 | **GrIP** | ✅ | ✅ | GrIP protocol |
-| **ZsCanFd** | — | ✅ | (Candlelight firmware) device via Qt serialbus (zscanfd.dll required at runtime), CAN FD supported |
+| **zscanfd** | ✅ | ✅ | Zilogic _USB to CAN Adapter_ and _USB to CAN FD Adapter_ via zscanfd driver (CONFIG+=zscanfd) in windows (zscanfd.dll required at runtime) and Linux support via SocketCAN |
 
 ## ⚙️ Features
 
 *   **Real-time CAN/CAN-FD/LIN Decoding**: Support for standard CAN, high-speed CAN-FD, and LIN bus frames.
-*   **Wide Hardware Compatibility**: Works with **SocketCAN** (Linux), **PEAK PCAN**, **Kvaser**, **Vector**, **TinyCAN**, **CANable**, **Candlelight**, **SLCAN**, **CANblaster** (UDP) and **ZsCanFd**.
+*   **Wide Hardware Compatibility**: Works with **SocketCAN** (Linux), **PEAK PCAN**, **Kvaser**, **Vector**, **TinyCAN**, **CANable**, **Candlelight**, **SLCAN**, **CANblaster** (UDP) and **Zilogic USB to CAN FD Adaptor**.
 *   **DBC & LDF Database Support**: Load multiple `.dbc` files for CAN signal decoding and `.ldf` files for LIN bus signal decoding.
 *   **Powerful Data Visualization**: Integrated Graphing tools supporting Time-series, Scatter charts, Text-based monitoring, and interactive Gauge views with zoom and live tooltips. Supports both CAN and LIN signals.
 *   **Advanced Filtering & Logging**: Isolate critical data with live filters and export captures for offline analysis.
@@ -127,7 +127,7 @@ windeployqt --release cangaroo.exe
   * No build-time SDK needed — Qt's `serialbus` module handles the integration.
   * Enable the driver via **Measurement > Driver > TinyCAN** and restart the application.
 
-**ZsCanFd** (`CONFIG+=zscanfd`) — Windows:
+**Zilogic USB to CAN FD Adaptor** (`CONFIG+=zscanfd`) — Windows:
   1. Download the [zscanfd.dll device driver](The download link has been added to the `src.pro` file) on the target machine.
   2. Download the [qtzscanfdbus.dll Qt plugin](The download link has been added to the `src.pro` file) on the target machine.
   3. Build with `qmake CONFIG+=zscanfd` (or add `zscanfd` to the Qt Creator qmake arguments).
