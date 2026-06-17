@@ -951,6 +951,148 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("interface_id") = 0,
     py::arg("timeout") = 1.0);
 
+    m.def("sdo_write_domain", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
+                                                                                        uint16_t index,
+                                                                                        uint8_t sub_index,
+                                                                                        py::bytes data,
+                                                                                        uint16_t interface_id,
+                                                                                        double timeout) -> py::dict
+    {
+        if (!g_activeEngine) {
+            throw std::runtime_error("no active engine");
+        }
+        if (node_id == 0 || node_id > 127) {
+            throw py::value_error("node_id must be in range 1..127");
+        }
+
+        BusInterface *intf = g_activeEngine->backend().getInterfaceById(interface_id);
+        if (!intf) {
+            throw py::value_error("invalid interface_id");
+        }
+
+        const std::string payload = data;
+        if (payload.empty()) {
+            throw py::value_error("data must not be empty");
+        }
+
+        const uint32_t totalSize = static_cast<uint32_t>(payload.size());
+        const uint16_t responseCobId = static_cast<uint16_t>(0x580u + node_id);
+
+        BusMessage initReq;
+        initReq.setRawId(static_cast<uint32_t>(0x600u + node_id));
+        initReq.setLength(8);
+        initReq.setByte(0, 0x21); // Initiate domain download, size indicated
+        initReq.setByte(1, static_cast<uint8_t>(index & 0xFF));
+        initReq.setByte(2, static_cast<uint8_t>((index >> 8) & 0xFF));
+        initReq.setByte(3, sub_index);
+        initReq.setByte(4, static_cast<uint8_t>(totalSize & 0xFFu));
+        initReq.setByte(5, static_cast<uint8_t>((totalSize >> 8) & 0xFFu));
+        initReq.setByte(6, static_cast<uint8_t>((totalSize >> 16) & 0xFFu));
+        initReq.setByte(7, static_cast<uint8_t>((totalSize >> 24) & 0xFFu));
+        intf->sendMessage(initReq);
+
+        BusMessage resp;
+        if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
+            throw std::runtime_error("timeout waiting for SDO download initiate response");
+        }
+
+        const uint8_t initCs = resp.getByte(0);
+        if (initCs == 0x80)
+        {
+            const uint32_t abortCode = parseSdoAbortCode(resp);
+            throw std::runtime_error(QString("SDO download aborted (0x%1)")
+                                     .arg(abortCode, 8, 16, QChar('0'))
+                                     .toStdString());
+        }
+        if (initCs != 0x60) {
+            throw std::runtime_error("unexpected SDO download initiate response");
+        }
+
+        emitScriptOutputLine(g_activeEngine,
+                             QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain_write\",\"index\":%1,\"sub_index\":%2,\"sent\":0,\"total\":%3,\"percent\":0}\n")
+                                 .arg(index)
+                                 .arg(sub_index)
+                                 .arg(totalSize));
+
+        bool toggle = false;
+        size_t offset = 0;
+        int lastPercent = 0;
+        while (offset < payload.size())
+        {
+            const size_t remaining = payload.size() - offset;
+            const int chunkBytes = static_cast<int>(qMin<size_t>(remaining, 7));
+            const bool lastSegment = (offset + static_cast<size_t>(chunkBytes)) >= payload.size();
+            const int unusedBytes = 7 - chunkBytes;
+
+            BusMessage segReq;
+            segReq.setRawId(static_cast<uint32_t>(0x600u + node_id));
+            segReq.setLength(8);
+            segReq.setByte(0, static_cast<uint8_t>((toggle ? 0x10u : 0x00u)
+                                                    | static_cast<uint8_t>(unusedBytes << 1)
+                                                    | (lastSegment ? 0x01u : 0x00u)));
+            for (int i = 0; i < 7; ++i)
+            {
+                const uint8_t b = (i < chunkBytes)
+                    ? static_cast<uint8_t>(payload[offset + static_cast<size_t>(i)])
+                    : 0;
+                segReq.setByte(1 + i, b);
+            }
+            intf->sendMessage(segReq);
+
+            BusMessage segResp;
+            if (!waitForSdoFrame(responseCobId, timeout, segResp)) {
+                throw std::runtime_error("timeout waiting for SDO download segment ack");
+            }
+
+            const uint8_t segCs = segResp.getByte(0);
+            if (segCs == 0x80)
+            {
+                const uint32_t abortCode = parseSdoAbortCode(segResp);
+                throw std::runtime_error(QString("SDO download aborted (0x%1)")
+                                         .arg(abortCode, 8, 16, QChar('0'))
+                                         .toStdString());
+            }
+            if ((segCs & 0xE0) != 0x20) {
+                throw std::runtime_error("unexpected SDO download segment response");
+            }
+
+            const bool responseToggle = (segCs & 0x10) != 0;
+            if (responseToggle != toggle) {
+                throw std::runtime_error("SDO download toggle mismatch");
+            }
+
+            offset += static_cast<size_t>(chunkBytes);
+            toggle = !toggle;
+
+            const int percent = qBound(0, static_cast<int>((offset * 100ULL) / payload.size()), 100);
+            if (percent != lastPercent || lastSegment)
+            {
+                emitScriptOutputLine(g_activeEngine,
+                                     QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain_write\",\"index\":%1,\"sub_index\":%2,\"sent\":%3,\"total\":%4,\"percent\":%5}\n")
+                                         .arg(index)
+                                         .arg(sub_index)
+                                         .arg(static_cast<qulonglong>(offset))
+                                         .arg(totalSize)
+                                         .arg(percent));
+                lastPercent = percent;
+            }
+        }
+
+        py::dict result;
+        result["node_id"] = node_id;
+        result["index"] = index;
+        result["sub_index"] = sub_index;
+        result["size"] = static_cast<int>(payload.size());
+        result["ok"] = true;
+        return result;
+    },
+    py::arg("node_id"),
+    py::arg("index"),
+    py::arg("sub_index"),
+    py::arg("data"),
+    py::arg("interface_id") = 0,
+    py::arg("timeout") = 30.0);
+
     // --- DBC / database access ---
 
     m.def("databases", []() -> py::list

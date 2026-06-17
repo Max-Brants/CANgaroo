@@ -42,6 +42,7 @@ private slots:
     void onReadClicked();
     void onWriteClicked();
     void onDomainUploadClicked();
+    void onDomainDownloadClicked();
     void onSaveToFileClicked();
     void onScriptOutput(const QString &text);
     void onScriptError(const QString &text);
@@ -77,6 +78,7 @@ private:
     QPushButton *_btnRead;
     QPushButton *_btnWrite;
     QPushButton *_btnDomainUpload;
+    QPushButton *_btnDomainDownload;
     QPushButton *_btnSaveToFile;
     QProgressBar *_progressBar;
     QLabel *_statusLabel;
@@ -117,4 +119,5 @@ private:
     bool prepareWritePayload(const CanOpenObjectEntry &entry, QByteArray &payload, QString &errorMessage) const;
     QString buildReadScript(const QString &command, quint16 index, quint8 subIndex, int interfaceId, int nodeId, double timeoutSec) const;
     QString buildWriteScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QByteArray &payload) const;
+    QString buildDomainDownloadScript(quint16 index, quint8 subIndex, int interfaceId, int nodeId, const QString &filePath) const;
 };
