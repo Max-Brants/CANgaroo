@@ -918,10 +918,11 @@ void SdoWindow::setBusy(const QString &command, const QString &message)
     _busyHadError = false;
     _outputBuffer.clear();
     _pendingWritePayload.clear();
-    if (command == QStringLiteral("domain"))
+    _resultView->clear();
+    if (command == QStringLiteral("domain") || command == QStringLiteral("domain-download"))
     {
         _progressBar->setTextVisible(true);
-        _progressBar->setFormat(tr("%p% uploaded"));
+        _progressBar->setFormat(command == QStringLiteral("domain-download") ? tr("%p% downloaded") : tr("%p% uploaded"));
         _progressBar->setRange(0, 100);
         _progressBar->setValue(0);
     }
@@ -937,7 +938,7 @@ void SdoWindow::setBusy(const QString &command, const QString &message)
 
 void SdoWindow::clearBusy()
 {
-    if (_busyCommand == QStringLiteral("domain"))
+    if (_busyCommand == QStringLiteral("domain") || _busyCommand == QStringLiteral("domain-download"))
     {
         _progressBar->setRange(0, 100);
         _progressBar->setValue(_busyHadError ? 0 : 100);
@@ -990,7 +991,9 @@ void SdoWindow::handleProgressPayload(const QByteArray &jsonData)
         return;
 
     const QJsonObject obj = doc.object();
-    if (obj.value(QStringLiteral("cmd")).toString() != QStringLiteral("domain"))
+    const QString cmd = obj.value(QStringLiteral("cmd")).toString();
+    const bool isDownload = cmd == QStringLiteral("domain_write");
+    if (cmd != QStringLiteral("domain") && !isDownload)
         return;
 
     const int percent = qBound(0, obj.value(QStringLiteral("percent")).toInt(), 100);
@@ -998,10 +1001,12 @@ void SdoWindow::handleProgressPayload(const QByteArray &jsonData)
     const quint8 subIndex = static_cast<quint8>(obj.value(QStringLiteral("sub_index")).toInt());
 
     _progressBar->setTextVisible(true);
-    _progressBar->setFormat(tr("%p% uploaded"));
+    _progressBar->setFormat(isDownload ? tr("%p% downloaded") : tr("%p% uploaded"));
     _progressBar->setRange(0, 100);
     _progressBar->setValue(percent);
-    setStatusMessage(tr("Uploading %1... %2%").arg(CanOpenDb::formatObjectKey(index, subIndex)).arg(percent));
+    setStatusMessage(isDownload
+        ? tr("Downloading %1... %2%").arg(CanOpenDb::formatObjectKey(index, subIndex)).arg(percent)
+        : tr("Uploading %1... %2%").arg(CanOpenDb::formatObjectKey(index, subIndex)).arg(percent));
 }
 
 void SdoWindow::handleResultPayload(const QByteArray &jsonData, bool errorPayload)
@@ -1020,9 +1025,11 @@ void SdoWindow::handleResultPayload(const QByteArray &jsonData, bool errorPayloa
 
     if (errorPayload)
     {
+        const QString message = obj.value(QStringLiteral("message")).toString();
         _busyHadError = true;
         _pendingWritePayload.clear();
-        setStatusMessage(obj.value(QStringLiteral("message")).toString(), true);
+        setStatusMessage(message, true);
+        _resultView->setPlainText(tr("Error: %1").arg(message));
         return;
     }
 

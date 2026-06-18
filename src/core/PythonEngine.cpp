@@ -581,6 +581,18 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         }, response);
     };
 
+    // Discards any frames already sitting in the RX queue before a new SDO
+    // transaction's initiate request is sent. Without this, a late response
+    // left over from a previous (e.g. timed-out) transfer to the same object
+    // can still match on cob-id/index/sub-index and get consumed as the
+    // answer to the new request, silently returning stale data.
+    auto flushStaleResponses = []()
+    {
+        if (!g_activeEngine) { return; }
+        QMutexLocker lock(&g_activeEngine->msgQueueMutex());
+        g_activeEngine->msgQueue().clear();
+    };
+
     // --- CANopen database access ---
 
     m.def("canopen_databases", []() -> py::list
@@ -634,7 +646,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         return buildProtocolDict(out);
     }, py::arg("msg"));
 
-    m.def("sdo_read", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_read", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode, flushStaleResponses](uint8_t node_id,
                                                                uint16_t index,
                                                                uint8_t sub_index,
                                                                uint16_t interface_id,
@@ -663,6 +675,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         req.setByte(5, 0);
         req.setByte(6, 0);
         req.setByte(7, 0);
+        flushStaleResponses();
         intf->sendMessage(req);
 
         BusMessage resp;
@@ -832,7 +845,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("interface_id") = 0,
     py::arg("timeout") = 1.0);
 
-    m.def("sdo_write", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_write", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode, flushStaleResponses](uint8_t node_id,
                                                                 uint16_t index,
                                                                 uint8_t sub_index,
                                                                 py::object value,
@@ -935,6 +948,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
             BusMessage resp;
             bool initiateOk = false;
+            flushStaleResponses();
             for (int attempt = 0; attempt < MAX_RETRIES && !initiateOk; ++attempt) {
                 intf->sendMessage(req);
                 if (!waitForSdoResponse(responseCobId, index, sub_index, timeout, resp)) {
@@ -956,7 +970,17 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
             bool toggle = false;
             int offset = 0;
+            int lastPercent = -1;
             const int segmentCount = qMax(1, (payloadSize + 6) / 7);
+            if (payloadSize > 0)
+            {
+                emitScriptOutputLine(g_activeEngine,
+                                     QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain_write\",\"index\":%1,\"sub_index\":%2,\"sent\":0,\"total\":%3,\"percent\":0}\n")
+                                         .arg(index)
+                                         .arg(sub_index)
+                                         .arg(payloadSize));
+                lastPercent = 0;
+            }
             for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex)
             {
                 const int chunkSize = qMin(7, payloadSize - offset);
@@ -1000,6 +1024,19 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
 
                 offset += chunkSize;
                 toggle = !toggle;
+
+                const int percent = payloadSize > 0 ? qBound(0, (offset * 100) / payloadSize, 100) : 100;
+                if (percent != lastPercent)
+                {
+                    emitScriptOutputLine(g_activeEngine,
+                                         QStringLiteral("CANGAROO_SDO_PROGRESS:{\"cmd\":\"domain_write\",\"index\":%1,\"sub_index\":%2,\"sent\":%3,\"total\":%4,\"percent\":%5}\n")
+                                             .arg(index)
+                                             .arg(sub_index)
+                                             .arg(offset)
+                                             .arg(payloadSize)
+                                             .arg(percent));
+                    lastPercent = percent;
+                }
             }
         }
         else
@@ -1015,6 +1052,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
             req.setByte(5, payloadSize > 1 ? static_cast<uint8_t>(payload.at(1)) : 0);
             req.setByte(6, payloadSize > 2 ? static_cast<uint8_t>(payload.at(2)) : 0);
             req.setByte(7, payloadSize > 3 ? static_cast<uint8_t>(payload.at(3)) : 0);
+            flushStaleResponses();
             intf->sendMessage(req);
 
             BusMessage resp;
@@ -1049,7 +1087,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
     py::arg("timeout") = 1.0,
     py::arg("force_segment") = false);
 
-    m.def("sdo_write_domain", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode](uint8_t node_id,
+    m.def("sdo_write_domain", [waitForSdoResponse, waitForSdoFrame, parseSdoAbortCode, flushStaleResponses](uint8_t node_id,
                                                                                         uint16_t index,
                                                                                         uint8_t sub_index,
                                                                                         py::bytes data,
@@ -1087,6 +1125,7 @@ PYBIND11_EMBEDDED_MODULE(cangaroo, m)
         initReq.setByte(5, static_cast<uint8_t>((totalSize >> 8) & 0xFFu));
         initReq.setByte(6, static_cast<uint8_t>((totalSize >> 16) & 0xFFu));
         initReq.setByte(7, static_cast<uint8_t>((totalSize >> 24) & 0xFFu));
+        flushStaleResponses();
         intf->sendMessage(initReq);
 
         BusMessage resp;
