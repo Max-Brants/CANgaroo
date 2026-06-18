@@ -289,8 +289,8 @@ void SetupDialog::reloadCanDbs(const QModelIndex &index)
 
     QStringList errors;
     if (!item->network->reloadCanDbs(_backend, &errors)) {
-        QMessageBox::warning(this, tr("DBC Error"),
-            tr("Failed to reload one or more DBC files:\n\n%1").arg(errors.join("\n")));
+        QMessageBox::warning(this, tr("Database Error"),
+            tr("Failed to reload one or more database files:\n\n%1").arg(errors.join("\n")));
     }
 
     // Synchronize stale pointers in tree items
@@ -325,12 +325,12 @@ void SetupDialog::addCanDb(const QModelIndex &parent, const QString &filename)
         for (const auto &existingDb : _currentNetwork->_canDbs) {
             if (existingDb->getPath() == filename) {
                 QMessageBox::StandardButton reply;
-                reply = QMessageBox::question(this, tr("Duplicate DBC"),
+                reply = QMessageBox::question(this, tr("Duplicate Database"),
                     tr("The file is already loaded:\n%1\n\nDo you want to reload it?").arg(filename),
                     QMessageBox::Yes | QMessageBox::No);
 
                 if (reply == QMessageBox::Yes) {
-                    // Find the index of the existing DBC in the model to remove it first
+                    // Find the index of the existing database in the model to remove it first
                     SetupDialogTreeItem *root = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
                     if (root && root->getType() == SetupDialogTreeItem::type_candb_root) {
                         for (int i=0; i < root->getChildCount(); ++i) {
@@ -344,12 +344,12 @@ void SetupDialog::addCanDb(const QModelIndex &parent, const QString &filename)
 
                     // Now load fresh
                     QString errorMsg;
-                    pCanDb candb = _backend->loadDbc(filename, &errorMsg);
+                    pCanDb candb = _backend->loadCanDbFile(filename, &errorMsg);
                     if (candb) {
                         model->addCanDb(parent, candb);
                     } else {
                         QMessageBox::critical(this, tr("Reload Failed"),
-                            tr("Failed to reload DBC:\n%1\n\nReason: %2").arg(filename, errorMsg));
+                            tr("Failed to reload database:\n%1\n\nReason: %2").arg(filename, errorMsg));
                     }
                 }
                 return;
@@ -358,15 +358,15 @@ void SetupDialog::addCanDb(const QModelIndex &parent, const QString &filename)
     }
 
     QString errorMsg;
-    pCanDb candb = _backend->loadDbc(filename, &errorMsg);
+    pCanDb candb = _backend->loadCanDbFile(filename, &errorMsg);
     if (candb) {
         model->addCanDb(parent, candb);
         if (!errorMsg.isEmpty()) {
-            QMessageBox::warning(this, tr("DBC Warning"), errorMsg);
+            QMessageBox::warning(this, tr("Database Warning"), errorMsg);
         }
     } else {
-        QMessageBox::critical(this, tr("DBC Error"),
-            tr("Failed to load DBC file:\n%1\n\nReason: %2").arg(filename, errorMsg));
+        QMessageBox::critical(this, tr("Database Error"),
+            tr("Failed to load CAN database file:\n%1\n\nReason: %2").arg(filename, errorMsg));
     }
 }
 
@@ -391,7 +391,8 @@ void SetupDialog::on_btAddDatabase_clicked()
             addLinDb(parent, filename);
         }
     } else {
-        QStringList files = QFileDialog::getOpenFileNames(this, "Load CAN Databases", "", "Vector DBC Files (*.dbc)");
+        QStringList files = QFileDialog::getOpenFileNames(this, "Load CAN Databases", "",
+            "CAN Databases (*.dbc *.eds *.dcf);;Vector DBC Files (*.dbc);;CANopen EDS/DCF Files (*.eds *.dcf)");
         for (const QString &filename : files) {
             addCanDb(parent, filename);
         }

@@ -92,6 +92,8 @@ public:
     BusInterface *getInterfaceByDriverAndName(QString driverName, QString deviceName);
 
     pCanDb loadDbc(QString filename, QString *errorMsg = nullptr);
+    pCanDb loadEds(QString filename, QString *errorMsg = nullptr);
+    pCanDb loadCanDbFile(QString filename, QString *errorMsg = nullptr);
     pLinDb loadLdf(QString filename, QString *errorMsg = nullptr);
 
     void notifyDecoderConfigChanged();

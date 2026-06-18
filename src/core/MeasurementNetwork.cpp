@@ -22,6 +22,8 @@
 #include "MeasurementNetwork.h"
 #include "MeasurementInterface.h"
 
+#include <QFileInfo>
+
 #include "core/Backend.h"
 #include "core/DBC/LinDb.h"
 
@@ -87,7 +89,7 @@ bool MeasurementNetwork::reloadCanDbs(Backend *backend, QStringList *errors)
     bool allSuccess = true;
     for (pCanDb &db : _canDbs) {
         QString errorMsg;
-        pCanDb newDb = backend->loadDbc(db->getPath(), &errorMsg);
+        pCanDb newDb = backend->loadCanDbFile(db->getPath(), &errorMsg);
         if (newDb) {
             db->updateFrom(newDb.data());
         } else {
@@ -150,7 +152,10 @@ bool MeasurementNetwork::saveXML(Backend &backend, QDomDocument &xml, QDomElemen
     QDomElement candbsNode = xml.createElement("databases");
     for (const auto &candb : _canDbs) {
         QDomElement dbNode = xml.createElement("database");
-        dbNode.setAttribute("db-type", "dbc");
+        QFileInfo candbInfo(candb->getPath());
+        const bool isEds = candbInfo.suffix().compare("eds", Qt::CaseInsensitive) == 0 ||
+                            candbInfo.suffix().compare("dcf", Qt::CaseInsensitive) == 0;
+        dbNode.setAttribute("db-type", isEds ? "eds" : "dbc");
         if (!candb->saveXML(backend, xml, dbNode)) {
             return false;
         }
@@ -209,7 +214,7 @@ bool MeasurementNetwork::loadXML(Backend &backend, QDomElement el)
             if (lindb) addLinDb(lindb);
             else log_error(QString("Unable to load LDF: %1").arg(filename));
         } else {
-            addCanDb(backend.loadDbc(filename));
+            addCanDb(backend.loadCanDbFile(filename));
         }
     }
 

@@ -33,6 +33,7 @@
 #include "driver/BusInterface.h"
 #include "driver/BusListener.h"
 #include "parser/dbc/DbcParser.h"
+#include "parser/eds/EdsParser.h"
 #include "core/DBC/LinDb.h"
 #include "core/DBC/LinFrame.h"
 
@@ -313,6 +314,44 @@ pCanDb Backend::loadDbc(QString filename, QString *errorMsg)
     delete dbc;
 
     return candb;
+}
+
+pCanDb Backend::loadEds(QString filename, QString *errorMsg)
+{
+    EdsParser parser;
+
+    QFileInfo info(filename);
+    if (!info.exists() || !info.isReadable()) {
+        if (errorMsg) {
+            *errorMsg = tr("File not found or not readable.");
+        }
+        return pCanDb();
+    }
+
+    QFile *eds = new QFile(filename);
+
+    pCanDb candb(new CanDb());
+    if (!parser.parseFile(eds, *candb)) {
+        if (errorMsg) {
+            *errorMsg = tr("Failed to parse EDS file. Please check the log for details.");
+        }
+        delete eds;
+        return pCanDb();
+    }
+    delete eds;
+
+    return candb;
+}
+
+pCanDb Backend::loadCanDbFile(QString filename, QString *errorMsg)
+{
+    QFileInfo info(filename);
+    if (info.suffix().compare("eds", Qt::CaseInsensitive) == 0 ||
+        info.suffix().compare("dcf", Qt::CaseInsensitive) == 0) {
+        return loadEds(filename, errorMsg);
+    } else {
+        return loadDbc(filename, errorMsg);
+    }
 }
 
 void Backend::clearLog()
