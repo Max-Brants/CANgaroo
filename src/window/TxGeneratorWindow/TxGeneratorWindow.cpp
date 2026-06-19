@@ -30,10 +30,29 @@
 #include "core/MeasurementNetwork.h"
 #include "core/MeasurementSetup.h"
 #include "core/MeasurementInterface.h"
+#include "core/DBC/CanOpenDb.h"
 #include "driver/BusInterface.h"
 #include "driver/CanDriver.h"
 #include "window/RawTxWindow/RawTxWindow.h"
 #include <chrono>
+
+namespace {
+// Roles used to tag items in treeAvailable so on_btnAddToList_released() knows
+// whether to build the frame from a CanDbMessage* or from SDO index/sub/node data.
+enum AvailableItemRole
+{
+    RoleKind = Qt::UserRole + 1, // "dbc" or "sdo"
+    RoleSdoIndex,
+    RoleSdoSubIndex,
+    RoleSdoNodeId,
+    RoleSdoByteWidth,
+};
+
+bool sdoAccessAllowsWrite(const QString &accessType)
+{
+    return accessType.trimmed().toLower().contains(QLatin1Char('w'));
+}
+}
 
 TxGeneratorWindow::TxGeneratorWindow(QWidget *parent, Backend &backend) :
     ConfigurableWidget(parent),
@@ -121,7 +140,7 @@ TxGeneratorWindow::TxGeneratorWindow(QWidget *parent, Backend &backend) :
 
     refreshInterfaces();
     updateMeasurementState();
-    populateDbcMessages();
+    populateAvailableMessages();
     updateActiveList();
     isLoading = false;
 }
@@ -268,10 +287,10 @@ void TxGeneratorWindow::refreshInterfaces()
 
     // Re-resolve interface names in case frames were loaded before the setup existed.
     resolveInterfaceNames();
-    populateDbcMessages();
+    populateAvailableMessages();
 }
 
-void TxGeneratorWindow::populateDbcMessages()
+void TxGeneratorWindow::populateAvailableMessages()
 {
     ui->treeAvailable->clear();
 
@@ -301,8 +320,33 @@ void TxGeneratorWindow::populateDbcMessages()
                             item->setText(0, "0x" + QString("%1").arg(dbMsg->getRaw_id(), 3, 16, QChar('0')).toUpper());
                             item->setText(1, dbMsg->getName());
                             item->setData(0, Qt::UserRole, QVariant::fromValue((void*)dbMsg));
+                            item->setData(0, RoleKind, QStringLiteral("dbc"));
                         }
                     }
+                }
+            }
+
+            // SDO objects from any EDS/DCF attached to this network: each writable,
+            // expedited-sized (<=4 byte) entry becomes a one-frame SDO download request
+            // (COB-ID 0x600+node). Segmented/domain transfers can't be expressed as a
+            // single cyclic frame, so those entries are intentionally left out.
+            for (const pCanOpenDb &db : network->_canOpenDbs) {
+                if (!db) { continue; }
+
+                const int nodeId = qBound(1, db->configuredNodeId() >= 0 ? db->configuredNodeId() : 1, 127);
+                for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it) {
+                    const CanOpenObjectEntry &entry = it.value();
+                    const quint8 width = CanOpenDb::expeditedSdoByteWidth(entry);
+                    if (width < 1 || width > 4 || !sdoAccessAllowsWrite(entry.accessType)) { continue; }
+
+                    QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeAvailable);
+                    item->setText(0, "0x" + QString("%1").arg(0x600 + nodeId, 3, 16, QChar('0')).toUpper());
+                    item->setText(1, QString("SDO write %1 %2").arg(CanOpenDb::formatObjectKey(entry.index, entry.subIndex), entry.name));
+                    item->setData(0, RoleKind, QStringLiteral("sdo"));
+                    item->setData(0, RoleSdoIndex, entry.index);
+                    item->setData(0, RoleSdoSubIndex, entry.subIndex);
+                    item->setData(0, RoleSdoNodeId, nodeId);
+                    item->setData(0, RoleSdoByteWidth, width);
                 }
             }
         }
@@ -323,7 +367,7 @@ void TxGeneratorWindow::on_treeAvailable_itemSelectionChanged()
     ui->btnAddToList->setEnabled(!ui->treeAvailable->selectedItems().isEmpty());
 
     QTreeWidgetItem *item = ui->treeAvailable->currentItem();
-    if (item && _bitMatrixWidget) {
+    if (item && _bitMatrixWidget && item->data(0, RoleKind).toString() != QStringLiteral("sdo")) {
         CanDbMessage *dbMsg = static_cast<CanDbMessage*>(item->data(0, Qt::UserRole).value<void*>());
         _bitMatrixWidget->setMessage(dbMsg);
     } else if (_bitMatrixWidget) {
@@ -358,6 +402,34 @@ void TxGeneratorWindow::on_btnAddToList_released()
     if (selected.isEmpty()) return;
 
     for (auto *item : selected) {
+        if (item->data(0, RoleKind).toString() == QStringLiteral("sdo")) {
+            const quint16 index = static_cast<quint16>(item->data(0, RoleSdoIndex).toUInt());
+            const quint8 subIndex = static_cast<quint8>(item->data(0, RoleSdoSubIndex).toUInt());
+            const quint8 nodeId = static_cast<quint8>(item->data(0, RoleSdoNodeId).toUInt());
+            const quint8 width = static_cast<quint8>(item->data(0, RoleSdoByteWidth).toUInt());
+
+            // Expedited SDO download request: cs = 0x23 | ((4-n)<<2), then index (LE), sub-index,
+            // then up to 4 data bytes (zero-filled here; edit via double-click like a manual frame).
+            CyclicMessage cm;
+            cm.msg = BusMessage(); // Ensure fresh instance
+            cm.msg.setId(0x600u + nodeId);
+            cm.msg.setExtended(false);
+            cm.msg.setLength(8);
+            cm.msg.setData(static_cast<uint8_t>(0x23 | ((4 - width) << 2)),
+                           static_cast<uint8_t>(index & 0xFF),
+                           static_cast<uint8_t>((index >> 8) & 0xFF),
+                           subIndex, 0, 0, 0, 0);
+            cm.name = QString("SDO write %1").arg(CanOpenDb::formatObjectKey(index, subIndex));
+            cm.interval = 100;
+            cm.enabled = false;
+            cm.lastSent = 0;
+            cm.interfaceId = static_cast<BusInterfaceId>(ui->comboBoxInterface->currentData().toUInt());
+            cm.dbMsg = nullptr;
+
+            _cyclicMessages.append(cm);
+            continue;
+        }
+
         CanDbMessage *dbMsg = static_cast<CanDbMessage*>(item->data(0, Qt::UserRole).value<void*>());
         if (!dbMsg) continue;
 
@@ -521,7 +593,7 @@ void TxGeneratorWindow::on_spinInterval_valueChanged(int i)
 void TxGeneratorWindow::on_comboBoxInterface_currentIndexChanged(int index)
 {
     (void)index;
-    populateDbcMessages();
+    populateAvailableMessages();
     emit interfaceChanged(static_cast<BusInterfaceId>(ui->comboBoxInterface->currentData().toUInt()));
 }
 

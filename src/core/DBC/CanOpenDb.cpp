@@ -200,6 +200,27 @@ bool CanOpenDb::isSignedDataType(quint16 dataType)
     }
 }
 
+quint8 CanOpenDb::expeditedSdoByteWidth(const CanOpenObjectEntry &entry)
+{
+    if (entry.bitLength > 0)
+        return qMax<quint8>(1, static_cast<quint8>((entry.bitLength + 7) / 8));
+
+    switch (entry.dataType) {
+    case 0x0001: return 1;
+    case 0x0002:
+    case 0x0005: return 1;
+    case 0x0003:
+    case 0x0006: return 2;
+    case 0x0010:
+    case 0x0016: return 3;
+    case 0x0004:
+    case 0x0007:
+    case 0x0008: return 4;
+    case 0x0011: return 8;
+    default: return 0;
+    }
+}
+
 bool CanOpenDb::parseIntegerExpression(const QString &text, quint8 nodeId, quint32 *value)
 {
     if (!value) {

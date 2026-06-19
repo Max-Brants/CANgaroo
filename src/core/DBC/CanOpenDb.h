@@ -95,6 +95,10 @@ public:
     static bool isSignedDataType(quint16 dataType);
     static bool parseIntegerExpression(const QString &text, quint8 nodeId, quint32 *value);
 
+    // Byte width of an expedited SDO transfer for this entry (1-4 typically, up to 8 for REAL64),
+    // or 0 if the type has no fixed width (e.g. DOMAIN, strings) and cannot be expedited.
+    static quint8 expeditedSdoByteWidth(const CanOpenObjectEntry &entry);
+
 private:
     QString _path;
     QString _lastError;

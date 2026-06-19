@@ -118,24 +118,7 @@ QString jsonQuoted(const QByteArray &value)
 
 int byteWidth(const CanOpenObjectEntry &entry)
 {
-    if (entry.bitLength > 0)
-        return qMax(1, static_cast<int>((entry.bitLength + 7) / 8));
-
-    switch (entry.dataType)
-    {
-    case 0x0001: return 1;
-    case 0x0002:
-    case 0x0005: return 1;
-    case 0x0003:
-    case 0x0006: return 2;
-    case 0x0010:
-    case 0x0016: return 3;
-    case 0x0004:
-    case 0x0007:
-    case 0x0008: return 4;
-    case 0x0011: return 8;
-    default: return 0;
-    }
+    return CanOpenDb::expeditedSdoByteWidth(entry);
 }
 
 QByteArray integerToLittleEndian(quint64 value, int width)
