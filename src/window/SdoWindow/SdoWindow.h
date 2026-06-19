@@ -55,6 +55,7 @@ private:
         EditorNone = 0,
         EditorBoolean,
         EditorInteger,
+        EditorReal,
         EditorText,
         EditorHex,
     };
@@ -71,6 +72,7 @@ private:
     QStackedWidget *_editorStack;
     QComboBox *_boolEditor;
     QLineEdit *_integerEditor;
+    QLineEdit *_realEditor;
     QLineEdit *_textEditor;
     QLineEdit *_hexEditor;
     QPlainTextEdit *_resultView;

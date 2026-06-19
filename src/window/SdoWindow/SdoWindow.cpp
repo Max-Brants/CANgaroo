@@ -25,6 +25,7 @@
 #include <QTreeWidgetItem>
 #include <QTreeWidgetItemIterator>
 #include <QVBoxLayout>
+#include <cstring>
 #include <limits>
 
 #include "core/BusTrace.h"
@@ -90,6 +91,11 @@ bool isIntegerType(const CanOpenObjectEntry &entry)
     return isSignedIntegerType(entry) || isUnsignedIntegerType(entry);
 }
 
+bool isRealType(const CanOpenObjectEntry &entry)
+{
+    return entry.dataType == 0x0008 || entry.dataType == 0x0011;
+}
+
 bool isTextType(const CanOpenObjectEntry &entry)
 {
     return entry.dataType == 0x0009 || entry.dataType == 0x000B;
@@ -125,7 +131,9 @@ int byteWidth(const CanOpenObjectEntry &entry)
     case 0x0010:
     case 0x0016: return 3;
     case 0x0004:
-    case 0x0007: return 4;
+    case 0x0007:
+    case 0x0008: return 4;
+    case 0x0011: return 8;
     default: return 0;
     }
 }
@@ -159,6 +167,44 @@ qint64 littleEndianToSigned(const QByteArray &data)
     return static_cast<qint64>(raw);
 }
 
+double bytesToReal(const CanOpenObjectEntry &entry, const QByteArray &data)
+{
+    const quint64 bits = littleEndianToUnsigned(data);
+    if (entry.dataType == 0x0008)
+    {
+        const quint32 raw32 = static_cast<quint32>(bits);
+        float f;
+        std::memcpy(&f, &raw32, sizeof(f));
+        return static_cast<double>(f);
+    }
+
+    double d;
+    std::memcpy(&d, &bits, sizeof(d));
+    return d;
+}
+
+QByteArray realToLittleEndian(double value, int width)
+{
+    quint64 bits = 0;
+    if (width == 4)
+    {
+        const float f = static_cast<float>(value);
+        quint32 raw32;
+        std::memcpy(&raw32, &f, sizeof(raw32));
+        bits = raw32;
+    }
+    else
+    {
+        std::memcpy(&bits, &value, sizeof(bits));
+    }
+    return integerToLittleEndian(bits, width);
+}
+
+QString realToString(const CanOpenObjectEntry &entry, double value)
+{
+    return QString::number(value, 'g', entry.dataType == 0x0008 ? 9 : 17);
+}
+
 QString bytesToHex(const QByteArray &data)
 {
     return QString::fromLatin1(data.toHex(' ')).toUpper();
@@ -177,6 +223,9 @@ QString decodeValueForDisplay(const CanOpenObjectEntry &entry, const QByteArray 
 
     if (isUnsignedIntegerType(entry))
         return QString::number(littleEndianToUnsigned(data));
+
+    if (isRealType(entry))
+        return realToString(entry, bytesToReal(entry, data));
 
     if (isTextType(entry))
         return QString::fromUtf8(data);
@@ -293,6 +342,13 @@ SdoWindow::SdoWindow(QWidget *parent, Backend &backend)
     integerLayout->addWidget(_integerEditor);
     _editorStack->addWidget(integerPage);
 
+    auto *realPage = new QWidget(_editorStack);
+    auto *realLayout = new QHBoxLayout(realPage);
+    realLayout->setContentsMargins(0, 0, 0, 0);
+    _realEditor = new QLineEdit(realPage);
+    realLayout->addWidget(_realEditor);
+    _editorStack->addWidget(realPage);
+
     auto *textPage = new QWidget(_editorStack);
     auto *textLayout = new QHBoxLayout(textPage);
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -361,6 +417,7 @@ SdoWindow::SdoWindow(QWidget *parent, Backend &backend)
 
     connect(_boolEditor, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int) { emit settingsChanged(this); });
     connect(_integerEditor, &QLineEdit::textChanged, this, [this](const QString &) { emit settingsChanged(this); });
+    connect(_realEditor, &QLineEdit::textChanged, this, [this](const QString &) { emit settingsChanged(this); });
     connect(_textEditor, &QLineEdit::textChanged, this, [this](const QString &) { emit settingsChanged(this); });
     connect(_hexEditor, &QLineEdit::textChanged, this, [this](const QString &) { emit settingsChanged(this); });
 
@@ -806,6 +863,7 @@ void SdoWindow::updateEditorForSelection()
         _editorStack->setCurrentIndex(EditorNone);
         _editorHintLabel->setText(tr("Select an object to inspect or transfer."));
         _integerEditor->clear();
+        _realEditor->clear();
         _textEditor->clear();
         _hexEditor->clear();
         return;
@@ -827,6 +885,13 @@ void SdoWindow::updateEditorForSelection()
         _integerEditor->setText(currentValue);
         _integerEditor->setPlaceholderText(entry->isSigned() ? tr("Decimal or hex value") : tr("Unsigned decimal or hex value"));
         _editorHintLabel->setText(tr("Integer editor (%1-bit)").arg(entry->bitLength > 0 ? entry->bitLength : byteWidth(*entry) * 8));
+    }
+    else if (isRealType(*entry) && (byteWidth(*entry) == 4 || byteWidth(*entry) == 8))
+    {
+        _editorStack->setCurrentIndex(EditorReal);
+        _realEditor->setText(currentValue);
+        _realEditor->setPlaceholderText(tr("Floating-point value"));
+        _editorHintLabel->setText(tr("Real editor (%1-bit)").arg(byteWidth(*entry) * 8));
     }
     else if (isTextType(*entry))
     {
@@ -870,7 +935,8 @@ void SdoWindow::updateActionState()
         && measurementRunning
         && engineIdle
         && ((isBooleanType(*entry))
-            || ((isIntegerType(*entry) || isTextType(*entry) || isHexType(*entry)) && byteWidth(*entry) <= 4));
+            || ((isIntegerType(*entry) || isTextType(*entry) || isHexType(*entry)) && byteWidth(*entry) <= 4)
+            || (isRealType(*entry) && (byteWidth(*entry) == 4 || byteWidth(*entry) == 8)));
     const bool canDomainUpload = hasObject && domainObject && accessAllowsWrite(entry->accessType) && interfaceAvailable && measurementRunning && engineIdle;
 
     _btnRead->setEnabled(canRead);
@@ -900,7 +966,7 @@ void SdoWindow::updateActionState()
     if (hasObject && !domainObject && !canRead)
         warnings << tr("Read is only available for readable non-domain objects.");
     if (hasObject && !domainObject && !canWrite)
-        warnings << tr("Write is limited to BOOLEAN, integer, text, or byte-array values up to 4 bytes.");
+        warnings << tr("Write is limited to BOOLEAN, integer, real, text, or byte-array values up to 4 bytes.");
     if (hasObject && domainObject && !canDomainUpload)
         warnings << tr("Domain download requires a writable DOMAIN object, active measurement, and interface.");
     _warningLabel->setText(warnings.join(QLatin1Char('\n')));
@@ -1198,6 +1264,34 @@ bool SdoWindow::prepareWritePayload(const CanOpenObjectEntry &entry, QByteArray 
             return false;
         }
         payload = integerToLittleEndian(static_cast<quint64>(value), width);
+        return true;
+    }
+
+    if (isRealType(entry))
+    {
+        const int width = byteWidth(entry);
+        if (width != 4 && width != 8)
+        {
+            errorMessage = tr("This datatype is not writable in the SDO view yet.");
+            return false;
+        }
+
+        const QString text = _realEditor->text().trimmed();
+        if (text.isEmpty())
+        {
+            errorMessage = tr("Enter a value to write.");
+            return false;
+        }
+
+        bool ok = false;
+        const double value = text.toDouble(&ok);
+        if (!ok)
+        {
+            errorMessage = tr("Invalid floating-point value.");
+            return false;
+        }
+
+        payload = realToLittleEndian(value, width);
         return true;
     }
 
