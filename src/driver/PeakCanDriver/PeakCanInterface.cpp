@@ -230,53 +230,65 @@ bool PeakCanInterface::readMessage(QList<BusMessage> &msglist, unsigned int time
         timeout_ms = 1;
     }
 
+    // The PCAN receive event only signals "queue is non-empty"; it does not
+    // re-signal once per queued frame, and an auto-reset event does not
+    // accumulate multiple pulses. Reading a single frame per wake-up can
+    // therefore leave a growing backlog in the driver's receive queue under
+    // bus load (frames eventually surface tens of seconds late). Drain the
+    // queue completely on every wake, as PEAK's own samples do.
     DWORD waitResult = WaitForSingleObject(static_cast<HANDLE>(_rxEvent), timeout_ms);
     if (waitResult != WAIT_OBJECT_0) {
         return hasTx;
     }
 
-    TPCANMsg       frame;
-    TPCANTimestamp ts;
+    bool gotAny = false;
 
-    TPCANStatus status = CAN_Read(_channel, &frame, &ts);
-    if (status != PCAN_ERROR_OK) {
-        if (!(status & PCAN_ERROR_QRCVEMPTY)) {
-            _stats.rx_errors++;
+    while (true) {
+        TPCANMsg       frame;
+        TPCANTimestamp ts;
+
+        TPCANStatus status = CAN_Read(_channel, &frame, &ts);
+        if (status != PCAN_ERROR_OK) {
+            if (!(status & PCAN_ERROR_QRCVEMPTY)) {
+                _stats.rx_errors++;
+            }
+            break;
         }
-        return false;
+
+        if (frame.MSGTYPE & PCAN_MESSAGE_STATUS) {
+            // Bus status frame — update error counter, don't forward to trace
+            _stats.rx_errors++;
+            continue;
+        }
+
+        BusMessage msg;
+        msg.setId(frame.ID);
+        msg.setExtended((frame.MSGTYPE & PCAN_MESSAGE_EXTENDED) != 0);
+        msg.setRTR((frame.MSGTYPE & PCAN_MESSAGE_RTR) != 0);
+        msg.setErrorFrame((frame.MSGTYPE & PCAN_MESSAGE_STATUS) != 0);
+        msg.setInterfaceId(getId());
+
+        // PCAN timestamp is relative to channel open (starts at 0).
+        // Add the wall-clock baseline captured at open() to produce Unix-epoch µs,
+        // consistent with the TX echo timestamps produced by sendMessage().
+        uint64_t device_us = ((uint64_t)ts.millis_overflow * 0x100000000ULL + ts.millis) * 1000ULL
+                             + ts.micros;
+        uint64_t total_us = _channelOpenTime_us + device_us;
+        msg.setTimestamp(total_us / 1000000ULL, total_us % 1000000ULL);
+
+        uint8_t len = (frame.LEN > 8) ? 8 : frame.LEN;
+        msg.setLength(len);
+        for (int i = 0; i < len; i++) {
+            msg.setByte(i, frame.DATA[i]);
+        }
+
+        msglist.append(msg);
+        _stats.rx_count++;
+        addFrameBits(msg);
+        gotAny = true;
     }
 
-    if (frame.MSGTYPE & PCAN_MESSAGE_STATUS) {
-        // Bus status frame — update error counter, don't forward to trace
-        _stats.rx_errors++;
-        return false;
-    }
-
-    BusMessage msg;
-    msg.setId(frame.ID);
-    msg.setExtended((frame.MSGTYPE & PCAN_MESSAGE_EXTENDED) != 0);
-    msg.setRTR((frame.MSGTYPE & PCAN_MESSAGE_RTR) != 0);
-    msg.setErrorFrame((frame.MSGTYPE & PCAN_MESSAGE_STATUS) != 0);
-    msg.setInterfaceId(getId());
-
-    // PCAN timestamp is relative to channel open (starts at 0).
-    // Add the wall-clock baseline captured at open() to produce Unix-epoch µs,
-    // consistent with the TX echo timestamps produced by sendMessage().
-    uint64_t device_us = ((uint64_t)ts.millis_overflow * 0x100000000ULL + ts.millis) * 1000ULL
-                         + ts.micros;
-    uint64_t total_us = _channelOpenTime_us + device_us;
-    msg.setTimestamp(total_us / 1000000ULL, total_us % 1000000ULL);
-
-    uint8_t len = (frame.LEN > 8) ? 8 : frame.LEN;
-    msg.setLength(len);
-    for (int i = 0; i < len; i++) {
-        msg.setByte(i, frame.DATA[i]);
-    }
-
-    msglist.append(msg);
-    _stats.rx_count++;
-    addFrameBits(msg);
-    return true;
+    return gotAny || hasTx;
 }
 
 bool PeakCanInterface::updateStatistics()
