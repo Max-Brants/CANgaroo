@@ -168,6 +168,11 @@
             <bool>true</bool>
            </property>
           </column>
+          <column>
+           <property name="text">
+            <string>Poll</string>
+           </property>
+          </column>
          </widget>
         </item>
         <item>

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QList>
 #include <QMap>
 #include <QSharedPointer>
@@ -98,6 +99,17 @@ public:
     // Byte width of an expedited SDO transfer for this entry (1-4 typically, up to 8 for REAL64),
     // or 0 if the type has no fixed width (e.g. DOMAIN, strings) and cannot be expedited.
     static quint8 expeditedSdoByteWidth(const CanOpenObjectEntry &entry);
+
+    // True for BOOLEAN/INTEGER*/UNSIGNED*/REAL* types that can be decoded into a plain double
+    // (as opposed to DOMAIN, strings, or TIME_OF_DAY/TIME_DIFFERENCE).
+    static bool isNumericDataType(quint16 dataType);
+
+    // Decodes a little-endian expedited SDO payload (exactly expeditedSdoByteWidth(entry) bytes)
+    // into a physical double value, for numeric entries only.
+    static double decodeNumericValue(const CanOpenObjectEntry &entry, const QByteArray &data);
+
+    static bool accessAllowsRead(const QString &accessType);
+    static bool accessAllowsWrite(const QString &accessType);
 
 private:
     QString _path;

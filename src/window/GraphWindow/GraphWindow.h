@@ -30,6 +30,7 @@
 
 class QComboBox;
 class QLabel;
+class QTimer;
 
 namespace Ui {
 class GraphWindow;
@@ -105,6 +106,7 @@ private slots:
 
     void onResumeMeasurement();
     void onPauseMeasurement();
+    void onSdoPollTick();
 
 signals:
     void activeSignalsUpdated(const QList<GraphSignal*>& activeSignals, const QMap<GraphSignal*, BusInterfaceIdList>& signalInterfaces, double globalStartTime);
@@ -129,10 +131,21 @@ private:
     void clearGraphData();
     void resetGraphView();
     void notifyWorkerActiveSignals();
+    void updateSdoPollTimer();
 
     void filterSignalTree(const QString &searchText);
     bool shouldShowSignalItem(class QTreeWidgetItem *item, const QString &searchText);
 
     QThread* _decoderThread = nullptr;
     SignalDecoderWorker* _decoderWorker = nullptr;
+
+    // Periodic SDO read-request polling for active CANopen GraphSignals. Each signal has its
+    // own user-adjustable interval (GraphSignal::sdoPollIntervalMs(), edited via the signal
+    // tree); a fast heartbeat timer checks due times and sends at most one request per tick,
+    // so requests are never bursted to the same node at once.
+    static constexpr int kSdoPollHeartbeatMs = 20;
+    QTimer *_sdoPollTimer = nullptr;
+    QList<GraphSignal*> _activeSdoSignals;
+    QMap<GraphSignal*, qint64> _sdoNextDueMs;
+    int _sdoScanCursor = 0; // rotates the scan start so one fast signal can't starve the rest
 };

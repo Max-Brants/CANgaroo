@@ -47,11 +47,6 @@ enum AvailableItemRole
     RoleSdoNodeId,
     RoleSdoByteWidth,
 };
-
-bool sdoAccessAllowsWrite(const QString &accessType)
-{
-    return accessType.trimmed().toLower().contains(QLatin1Char('w'));
-}
 }
 
 TxGeneratorWindow::TxGeneratorWindow(QWidget *parent, Backend &backend) :
@@ -337,7 +332,7 @@ void TxGeneratorWindow::populateAvailableMessages()
                 for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it) {
                     const CanOpenObjectEntry &entry = it.value();
                     const quint8 width = CanOpenDb::expeditedSdoByteWidth(entry);
-                    if (width < 1 || width > 4 || !sdoAccessAllowsWrite(entry.accessType)) { continue; }
+                    if (width < 1 || width > 4 || !CanOpenDb::accessAllowsWrite(entry.accessType)) { continue; }
 
                     QTreeWidgetItem *item = new QTreeWidgetItem(ui->treeAvailable);
                     item->setText(0, "0x" + QString("%1").arg(0x600 + nodeId, 3, 16, QChar('0')).toUpper());

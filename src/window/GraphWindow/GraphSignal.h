@@ -28,13 +28,16 @@
 class CanDbSignal;
 class LinSignal;
 class LinFrame;
+struct CanOpenObjectEntry;
 
-// Unified signal reference for graphing — wraps either a CAN or LIN signal.
+// Unified signal reference for graphing — wraps a CAN signal, a LIN signal, or a
+// CANopen SDO object (polled via periodic read requests rather than decoded passively).
 class GraphSignal
 {
 public:
     explicit GraphSignal(CanDbSignal *signal);
     GraphSignal(LinSignal *signal, LinFrame *frame);
+    GraphSignal(const CanOpenObjectEntry *entry, quint8 nodeId);
 
     QString name() const;
     QString unit() const;
@@ -43,15 +46,23 @@ public:
     QString parentName() const;
     QString comment() const;
     bool isLin() const noexcept;
+    bool isSdo() const noexcept;
 
     bool isPresentInMessage(const BusMessage &msg) const;
     double extractPhysicalFromMessage(const BusMessage &msg) const;
 
     CanDbSignal *asCanSignal() const noexcept;
     LinSignal   *asLinSignal() const noexcept;
+    const CanOpenObjectEntry *asSdoEntry() const noexcept;
+    quint8 sdoNodeId() const noexcept;
+
+    // Per-object poll cadence, user-adjustable (see GraphWindow's SDO signal tree column).
+    int sdoPollIntervalMs() const noexcept;
+    void setSdoPollIntervalMs(int ms);
 
 private:
     struct CanData { CanDbSignal *signal; };
     struct LinData { LinSignal *signal; LinFrame *frame; };
-    std::variant<CanData, LinData> _data;
+    struct SdoData { const CanOpenObjectEntry *entry; quint8 nodeId; int pollIntervalMs = 100; };
+    std::variant<CanData, LinData, SdoData> _data;
 };

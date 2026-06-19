@@ -44,13 +44,12 @@ enum ItemRoles
 
 bool accessAllowsRead(const QString &accessType)
 {
-    const QString normalized = accessType.trimmed().toLower();
-    return normalized.isEmpty() || normalized.contains(QLatin1Char('r'));
+    return CanOpenDb::accessAllowsRead(accessType);
 }
 
 bool accessAllowsWrite(const QString &accessType)
 {
-    return accessType.trimmed().toLower().contains(QLatin1Char('w'));
+    return CanOpenDb::accessAllowsWrite(accessType);
 }
 
 bool isBooleanType(const CanOpenObjectEntry &entry)

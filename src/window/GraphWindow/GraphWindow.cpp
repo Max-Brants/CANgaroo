@@ -28,8 +28,10 @@
 #include <QColorDialog>
 #include <QLabel>
 #include <QComboBox>
+#include <QSpinBox>
 #include <QThread>
 #include <QTimer>
+#include <QDateTime>
 #include <QSettings>
 #include <QShowEvent>
 #include <QCloseEvent>
@@ -43,6 +45,8 @@
 #include "core/DBC/CanDbMessage.h"
 #include "core/DBC/LinFrame.h"
 #include "core/DBC/LinSignal.h"
+#include "core/DBC/CanOpenDb.h"
+#include "driver/BusInterface.h"
 
 #include "TimeSeriesVisualization.h"
 #include "window/ConditionalLoggingDialog.h"
@@ -197,6 +201,13 @@ GraphWindow::GraphWindow(QWidget *parent, Backend &backend) :
     connect(this, &GraphWindow::requestDecoderRewindForWindow, _decoderWorker, &SignalDecoderWorker::rewindForWindow);
     connect(_backend.getTrace(), &BusTrace::afterAppend, _decoderWorker, &SignalDecoderWorker::onTraceAppended);
     connect(_decoderWorker, &SignalDecoderWorker::dataDecoded, this, &GraphWindow::onDecodedDataReady);
+
+    // See header comment on _sdoPollTimer: a fast heartbeat checks each active SDO
+    // signal's own due time (GraphSignal::sdoPollIntervalMs()) and sends at most one
+    // request per tick.
+    _sdoPollTimer = new QTimer(this);
+    _sdoPollTimer->setInterval(kSdoPollHeartbeatMs);
+    connect(_sdoPollTimer, &QTimer::timeout, this, &GraphWindow::onSdoPollTick);
 
     connect(&_backend, &Backend::beginMeasurement, this, &GraphWindow::onResumeMeasurement);
     connect(&_backend, &Backend::endMeasurement, this, &GraphWindow::onPauseMeasurement);
@@ -481,7 +492,7 @@ void GraphWindow::onAddToConditionClicked()
                 GraphSignal *gs = static_cast<GraphSignal*>(sigPtr);
 
                 // Condition table only supports CAN signals
-                if (gs->isLin()) {
+                if (gs->isLin() || gs->isSdo()) {
                     ++it;
                     continue;
                 }
@@ -612,6 +623,69 @@ void GraphWindow::notifyWorkerActiveSignals()
     }
 
     emit activeSignalsUpdated(allActive, allInterfaces, _sessionStartTime);
+
+    _activeSdoSignals.clear();
+    _sdoNextDueMs.clear();
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (auto sig : allActive) {
+        if (sig->isSdo()) {
+            _activeSdoSignals.append(sig);
+            _sdoNextDueMs[sig] = now; // poll right away once activated
+        }
+    }
+    updateSdoPollTimer();
+}
+
+void GraphWindow::updateSdoPollTimer()
+{
+    if (!_activeSdoSignals.isEmpty() && _backend.isMeasurementRunning()) {
+        if (!_sdoPollTimer->isActive()) _sdoPollTimer->start();
+    } else {
+        _sdoPollTimer->stop();
+    }
+}
+
+void GraphWindow::onSdoPollTick()
+{
+    if (_activeSdoSignals.isEmpty() || !_backend.isMeasurementRunning() || !_activeVisualization)
+        return;
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int n = _activeSdoSignals.size();
+    for (int i = 0; i < n; ++i) {
+        const int idx = (_sdoScanCursor + i) % n;
+        GraphSignal *sig = _activeSdoSignals.at(idx);
+        if (_sdoNextDueMs.value(sig, 0) > now)
+            continue;
+
+        const CanOpenObjectEntry *entry = sig->asSdoEntry();
+        if (!entry) continue;
+
+        // SDO upload (read) initiate request: cs=0x40, index (LE), sub-index, 4 reserved bytes.
+        BusMessage req;
+        req.setId(0x600u + sig->sdoNodeId());
+        req.setExtended(false);
+        req.setLength(8);
+        req.setData(0x40,
+                   static_cast<uint8_t>(entry->index & 0xFF),
+                   static_cast<uint8_t>((entry->index >> 8) & 0xFF),
+                   entry->subIndex, 0, 0, 0, 0);
+
+        const BusInterfaceIdList ifaces = _activeVisualization->getSignalInterfaces(sig);
+        for (BusInterfaceId ifId : ifaces) {
+            BusInterface *intf = _backend.getInterfaceById(ifId);
+            if (intf && intf->isOpen()) {
+                req.setInterfaceId(ifId);
+                intf->sendMessage(req);
+            }
+        }
+
+        _sdoNextDueMs[sig] = now + sig->sdoPollIntervalMs();
+        // Rotate so the next tick's scan starts after this signal, giving everyone a fair
+        // turn even if several signals are simultaneously due (at most 1 request/tick).
+        _sdoScanCursor = (idx + 1) % n;
+        break;
+    }
 }
 
 void GraphWindow::onDecodedDataReady(const QMap<GraphSignal*, DecodedSignalData>& newPoints, double globalStartTime)
@@ -797,11 +871,13 @@ void GraphWindow::onResumeMeasurement()
 {
     clearGraphData();
     for (auto v : _visualizations) v->setActive(true);
+    updateSdoPollTimer();
 }
 
 void GraphWindow::onPauseMeasurement()
 {
     for (auto v : _visualizations) v->setActive(false);
+    updateSdoPollTimer();
 }
 
 void GraphWindow::populateSignalTree()
@@ -838,6 +914,19 @@ void GraphWindow::populateSignalTree()
         QColor c = QColor::fromHsl(h % 360, 180, 150);
         pix.fill(c);
         sigItem->setIcon(0, QIcon(pix));
+
+        if (gs->isSdo()) {
+            QSpinBox *pollSpin = new QSpinBox();
+            pollSpin->setRange(20, 60000);
+            pollSpin->setSingleStep(10);
+            pollSpin->setSuffix(" ms");
+            pollSpin->setValue(gs->sdoPollIntervalMs());
+            pollSpin->setToolTip(tr("Read-poll interval for this object. Space out objects "
+                                     "on the same node to avoid overlapping SDO requests."));
+            connect(pollSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+                    [gs](int ms) { gs->setSdoPollIntervalMs(ms); });
+            ui->signalTree->setItemWidget(sigItem, 4, pollSpin);
+        }
     };
 
     for (MeasurementNetwork *network : setup.getNetworks()) {
@@ -921,6 +1010,51 @@ void GraphWindow::populateSignalTree()
                         addSignalItem(frmItem, gs, sigName, frameName,
                                       details, QString(), interfaceData);
                     }
+                }
+            }
+        }
+
+        // ── CANopen SDO objects ──────────────────────────────────────
+        // Polled on demand (see onSdoPollTick()) rather than decoded from passive
+        // traffic, so only readable, expedited-sized (<=4 byte) numeric entries qualify.
+        if (!network->_canOpenDbs.isEmpty()) {
+            QTreeWidgetItem *sdoRoot = new QTreeWidgetItem(ui->signalTree);
+            sdoRoot->setText(0, tr("SDO — %1").arg(network->name()));
+            sdoRoot->setExpanded(true);
+
+            for (const pCanOpenDb &db : network->_canOpenDbs) {
+                if (!db) continue;
+
+                const int nodeId = qBound(1, db->configuredNodeId() >= 0 ? db->configuredNodeId() : 1, 127);
+                QString devName = db->deviceName().isEmpty() ? db->fileName() : db->deviceName();
+
+                QTreeWidgetItem *devItem = new QTreeWidgetItem(sdoRoot);
+                devItem->setText(0, QString("%1 (node %2)").arg(devName).arg(nodeId));
+                devItem->setText(3, "DEV");
+                devItem->setCheckState(0, Qt::Unchecked);
+
+                QPixmap devPix(12, 12);
+                devPix.fill(QColor("#ff9800"));
+                devItem->setIcon(0, QIcon(devPix));
+
+                for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it) {
+                    const CanOpenObjectEntry &entry = it.value();
+                    if (!CanOpenDb::isNumericDataType(entry.dataType))
+                        continue;
+                    const quint8 width = CanOpenDb::expeditedSdoByteWidth(entry);
+                    if (width < 1 || width > 4 || !CanOpenDb::accessAllowsRead(entry.accessType))
+                        continue;
+
+                    auto *gs = new GraphSignal(&entry, static_cast<quint8>(nodeId));
+                    _ownedSignals.append(gs);
+
+                    QString sigName = entry.name.trimmed();
+                    if (sigName.isEmpty()) sigName = "Object";
+
+                    QString details = QString("SDO | %1").arg(CanOpenDb::formatObjectKey(entry.index, entry.subIndex));
+
+                    addSignalItem(devItem, gs, sigName, devName,
+                                  details, entry.accessType, interfaceData);
                 }
             }
         }

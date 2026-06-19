@@ -2,6 +2,7 @@
 
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <cstring>
 
 #include "parser/eds/CanOpenEdsParser.h"
 
@@ -219,6 +220,58 @@ quint8 CanOpenDb::expeditedSdoByteWidth(const CanOpenObjectEntry &entry)
     case 0x0011: return 8;
     default: return 0;
     }
+}
+
+bool CanOpenDb::isNumericDataType(quint16 dataType)
+{
+    switch (dataType) {
+    case 0x0001: // BOOLEAN
+    case 0x0002: case 0x0003: case 0x0004: case 0x0010: // INTEGER8/16/32/24
+    case 0x0005: case 0x0006: case 0x0007: case 0x0016: // UNSIGNED8/16/32/24
+    case 0x0008: case 0x0011: // REAL32/REAL64
+        return true;
+    default:
+        return false;
+    }
+}
+
+double CanOpenDb::decodeNumericValue(const CanOpenObjectEntry &entry, const QByteArray &data)
+{
+    quint64 raw = 0;
+    for (int i = 0; i < data.size() && i < 8; ++i)
+        raw |= static_cast<quint64>(static_cast<quint8>(data.at(i))) << (8 * i);
+
+    if (entry.dataType == 0x0008) { // REAL32
+        const quint32 raw32 = static_cast<quint32>(raw);
+        float f;
+        memcpy(&f, &raw32, sizeof(f));
+        return static_cast<double>(f);
+    }
+    if (entry.dataType == 0x0011) { // REAL64
+        double d;
+        memcpy(&d, &raw, sizeof(d));
+        return d;
+    }
+
+    if (isSignedDataType(entry.dataType)) {
+        const int bits = qBound(1, data.size() * 8, 63);
+        if ((raw >> (bits - 1)) & 0x1ULL)
+            raw |= (~0ULL) << bits;
+        return static_cast<double>(static_cast<qint64>(raw));
+    }
+
+    return static_cast<double>(raw);
+}
+
+bool CanOpenDb::accessAllowsRead(const QString &accessType)
+{
+    const QString normalized = accessType.trimmed().toLower();
+    return normalized.isEmpty() || normalized.contains(QLatin1Char('r'));
+}
+
+bool CanOpenDb::accessAllowsWrite(const QString &accessType)
+{
+    return accessType.trimmed().toLower().contains(QLatin1Char('w'));
 }
 
 bool CanOpenDb::parseIntegerExpression(const QString &text, quint8 nodeId, quint32 *value)
