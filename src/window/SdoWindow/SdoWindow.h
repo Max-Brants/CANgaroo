@@ -115,6 +115,7 @@ private:
     QString currentObjectKey() const;
     MeasurementNetwork *currentNetwork() const;
     const CanOpenDb *currentDb() const;
+    CanOpenDb *mutableCurrentDb() const;
     const CanOpenObjectEntry *currentObject() const;
     bool prepareWritePayload(const CanOpenObjectEntry &entry, QByteArray &payload, QString &errorMessage) const;
     QString buildReadScript(const QString &command, quint16 index, quint8 subIndex, int interfaceId, int nodeId, double timeoutSec) const;

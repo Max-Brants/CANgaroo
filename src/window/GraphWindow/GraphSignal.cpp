@@ -175,6 +175,12 @@ quint8 GraphSignal::sdoNodeId() const noexcept
     return std::get<SdoData>(_data).nodeId;
 }
 
+void GraphSignal::setSdoNodeId(quint8 nodeId)
+{
+    if (!isSdo()) return;
+    std::get<SdoData>(_data).nodeId = nodeId;
+}
+
 int GraphSignal::sdoPollIntervalMs() const noexcept
 {
     if (!isSdo()) return 0;

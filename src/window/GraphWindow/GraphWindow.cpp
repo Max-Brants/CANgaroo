@@ -22,6 +22,8 @@
 #include "GraphWindow.h"
 #include "ui_GraphWindow.h"
 
+#include <algorithm>
+
 #include <QDomDocument>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -250,6 +252,7 @@ GraphWindow::GraphWindow(QWidget *parent, Backend &backend) :
     connect(ui->signalSearchEdit, &QLineEdit::textChanged, this, &GraphWindow::onSearchTextChanged);
     connect(ui->btnAddGraph, &QPushButton::clicked, this, &GraphWindow::onAddGraphClicked);
     connect(ui->signalTree, &QTreeWidget::itemChanged, this, &GraphWindow::onSignalItemChanged);
+    connect(ui->signalTree, &QTreeWidget::itemClicked, this, &GraphWindow::onSignalTreeItemClicked);
     connect(ui->btnAddCondition, &QPushButton::clicked, this, &GraphWindow::onAddToConditionClicked);
     connect(&_backend, &Backend::onSetupChanged, this, &GraphWindow::populateSignalTree);
 
@@ -895,40 +898,6 @@ void GraphWindow::populateSignalTree()
 
     MeasurementSetup &setup = _backend.getSetup();
 
-    auto addSignalItem = [&](QTreeWidgetItem *parentItem, GraphSignal *gs,
-                              const QString &sigName, const QString &msgName,
-                              const QString &details, const QString &comment,
-                              const QVariant &interfaceData)
-    {
-        QTreeWidgetItem *sigItem = new QTreeWidgetItem(parentItem);
-        sigItem->setText(0, QString("[%1] %2").arg(msgName).arg(sigName));
-
-        sigItem->setText(1, details);
-        sigItem->setText(2, comment);
-        sigItem->setCheckState(0, Qt::Unchecked);
-        sigItem->setData(0, Qt::UserRole, QVariant::fromValue(static_cast<void*>(gs)));
-        sigItem->setData(0, Qt::UserRole + 1, interfaceData);
-
-        QPixmap pix(12, 12);
-        uint h = qHash(sigName);
-        QColor c = QColor::fromHsl(h % 360, 180, 150);
-        pix.fill(c);
-        sigItem->setIcon(0, QIcon(pix));
-
-        if (gs->isSdo()) {
-            QSpinBox *pollSpin = new QSpinBox();
-            pollSpin->setRange(20, 60000);
-            pollSpin->setSingleStep(10);
-            pollSpin->setSuffix(" ms");
-            pollSpin->setValue(gs->sdoPollIntervalMs());
-            pollSpin->setToolTip(tr("Read-poll interval for this object. Space out objects "
-                                     "on the same node to avoid overlapping SDO requests."));
-            connect(pollSpin, qOverload<int>(&QSpinBox::valueChanged), this,
-                    [gs](int ms) { gs->setSdoPollIntervalMs(ms); });
-            ui->signalTree->setItemWidget(sigItem, 4, pollSpin);
-        }
-    };
-
     for (MeasurementNetwork *network : setup.getNetworks()) {
         BusInterfaceIdList interfaces = network->getReferencedBusInterfaces();
         QVariant interfaceData = QVariant::fromValue(interfaces);
@@ -967,7 +936,7 @@ void GraphWindow::populateSignalTree()
                             .arg(sig->getMaximumValue())
                             .arg(sig->getUnit());
 
-                        addSignalItem(msgItem, gs, sigName, msgName,
+                        addSignalTreeItem(msgItem, gs, sigName, msgName,
                                       details, sig->comment(), interfaceData);
                     }
                 }
@@ -1007,7 +976,7 @@ void GraphWindow::populateSignalTree()
                             .arg(sig->maxValue())
                             .arg(sig->unit());
 
-                        addSignalItem(frmItem, gs, sigName, frameName,
+                        addSignalTreeItem(frmItem, gs, sigName, frameName,
                                       details, QString(), interfaceData);
                     }
                 }
@@ -1022,44 +991,236 @@ void GraphWindow::populateSignalTree()
             sdoRoot->setText(0, tr("SDO — %1").arg(network->name()));
             sdoRoot->setExpanded(true);
 
+            // Group by EDS path (not just list order - "Duplicate for Another Node" always
+            // appends, so duplicates of an earlier device can end up after unrelated ones)
+            // so each device type's rows stay together with its own "+ Add" row underneath.
+            QStringList orderedPaths;
+            QMap<QString, QList<pCanOpenDb>> dbsByPath;
             for (const pCanOpenDb &db : network->_canOpenDbs) {
                 if (!db) continue;
+                const QString path = db->path();
+                if (!dbsByPath.contains(path))
+                    orderedPaths.append(path);
+                dbsByPath[path].append(db);
+            }
 
-                const int nodeId = qBound(1, db->configuredNodeId() >= 0 ? db->configuredNodeId() : 1, 127);
-                QString devName = db->deviceName().isEmpty() ? db->fileName() : db->deviceName();
-
-                QTreeWidgetItem *devItem = new QTreeWidgetItem(sdoRoot);
-                devItem->setText(0, QString("%1 (node %2)").arg(devName).arg(nodeId));
-                devItem->setText(3, "DEV");
-                devItem->setCheckState(0, Qt::Unchecked);
-
-                QPixmap devPix(12, 12);
-                devPix.fill(QColor("#ff9800"));
-                devItem->setIcon(0, QIcon(devPix));
-
-                for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it) {
-                    const CanOpenObjectEntry &entry = it.value();
-                    if (!CanOpenDb::isNumericDataType(entry.dataType))
-                        continue;
-                    const quint8 width = CanOpenDb::expeditedSdoByteWidth(entry);
-                    if (width < 1 || width > 4 || !CanOpenDb::accessAllowsRead(entry.accessType))
-                        continue;
-
-                    auto *gs = new GraphSignal(&entry, static_cast<quint8>(nodeId));
-                    _ownedSignals.append(gs);
-
-                    QString sigName = entry.name.trimmed();
-                    if (sigName.isEmpty()) sigName = "Object";
-
-                    QString details = QString("SDO | %1").arg(CanOpenDb::formatObjectKey(entry.index, entry.subIndex));
-
-                    addSignalItem(devItem, gs, sigName, devName,
-                                  details, entry.accessType, interfaceData);
-                }
+            for (const QString &path : orderedPaths) {
+                QList<pCanOpenDb> &dbs = dbsByPath[path];
+                std::sort(dbs.begin(), dbs.end(), [](const pCanOpenDb &a, const pCanOpenDb &b) {
+                    return a->configuredNodeId() < b->configuredNodeId();
+                });
+                for (const pCanOpenDb &db : dbs)
+                    buildSdoDeviceItem(sdoRoot, db, interfaceData);
+                addSdoAddNodePlaceholder(sdoRoot, network, path, interfaceData);
             }
         }
     }
 
+    ui->signalTree->blockSignals(false);
+}
+
+void GraphWindow::addSignalTreeItem(QTreeWidgetItem *parentItem, GraphSignal *gs,
+                                     const QString &sigName, const QString &msgName,
+                                     const QString &details, const QString &comment,
+                                     const QVariant &interfaceData)
+{
+    QTreeWidgetItem *sigItem = new QTreeWidgetItem(parentItem);
+    sigItem->setText(0, QString("[%1] %2").arg(msgName).arg(sigName));
+
+    sigItem->setText(1, details);
+    sigItem->setText(2, comment);
+    sigItem->setCheckState(0, Qt::Unchecked);
+    sigItem->setData(0, Qt::UserRole, QVariant::fromValue(static_cast<void*>(gs)));
+    sigItem->setData(0, Qt::UserRole + 1, interfaceData);
+
+    QPixmap pix(12, 12);
+    uint h = qHash(sigName);
+    QColor c = QColor::fromHsl(h % 360, 180, 150);
+    pix.fill(c);
+    sigItem->setIcon(0, QIcon(pix));
+
+    if (gs->isSdo()) {
+        QSpinBox *pollSpin = new QSpinBox();
+        pollSpin->setRange(20, 60000);
+        pollSpin->setSingleStep(10);
+        pollSpin->setSuffix(" ms");
+        pollSpin->setValue(gs->sdoPollIntervalMs());
+        pollSpin->setToolTip(tr("Read-poll interval for this object. Space out objects "
+                                 "on the same node to avoid overlapping SDO requests."));
+        connect(pollSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+                [gs](int ms) { gs->setSdoPollIntervalMs(ms); });
+        ui->signalTree->setItemWidget(sigItem, 4, pollSpin);
+    }
+}
+
+namespace {
+// Data roles used on an "ADDNODE" placeholder row to look up what to clone when it's clicked
+// (see GraphWindow::onSignalTreeItemClicked). Distinct from Qt::UserRole/UserRole+1, which
+// shouldShowSignalItem() uses on leaf signal items to tell a signal apart from a container.
+constexpr int RoleAddNodeNetwork = Qt::UserRole + 10;
+constexpr int RoleAddNodePath = Qt::UserRole + 11;
+constexpr int RoleAddNodeInterfaceData = Qt::UserRole + 12;
+}
+
+QTreeWidgetItem *GraphWindow::buildSdoDeviceItem(QTreeWidgetItem *sdoRoot, const pCanOpenDb &db,
+                                                  const QVariant &interfaceData, int insertIndex)
+{
+    const int nodeId = qBound(1, db->configuredNodeId() >= 0 ? db->configuredNodeId() : 1, 127);
+    QString devName = db->deviceName().isEmpty() ? db->fileName() : db->deviceName();
+
+    // Inserted directly at its final position (rather than appended and moved afterwards) so
+    // setItemWidget() below stays attached - QTreeWidget drops it if the item is later taken
+    // out via takeChild()/insertChild().
+    QTreeWidgetItem *devItem = new QTreeWidgetItem();
+    if (insertIndex < 0 || insertIndex >= sdoRoot->childCount())
+        sdoRoot->addChild(devItem);
+    else
+        sdoRoot->insertChild(insertIndex, devItem);
+    // Node number is repeated in the label (not just the spinbox) so that several
+    // instances of the same EDS file - e.g. identical devices at different node IDs -
+    // stay distinguishable even when the Node column is scrolled out of view.
+    devItem->setText(0, QString("%1 (node %2)").arg(devName).arg(nodeId));
+    devItem->setText(3, "DEV");
+    devItem->setCheckState(0, Qt::Unchecked);
+
+    QPixmap devPix(12, 12);
+    devPix.fill(QColor("#ff9800"));
+    devItem->setIcon(0, QIcon(devPix));
+
+    // RECORD/ARRAY objects can have many sub-entries; nest those under an extra,
+    // collapsed group item per object instead of dumping every member as a flat
+    // sibling of all the other device signals.
+    QMap<quint16, QTreeWidgetItem *> objectGroups;
+    QList<GraphSignal *> deviceSdoSignals;
+
+    for (auto it = db->objects().cbegin(); it != db->objects().cend(); ++it) {
+        const CanOpenObjectEntry &entry = it.value();
+        if (!CanOpenDb::isNumericDataType(entry.dataType))
+            continue;
+        const quint8 width = CanOpenDb::expeditedSdoByteWidth(entry);
+        if (width < 1 || width > 4 || !CanOpenDb::accessAllowsRead(entry.accessType))
+            continue;
+
+        auto *gs = new GraphSignal(&entry, static_cast<quint8>(nodeId));
+        _ownedSignals.append(gs);
+        deviceSdoSignals.append(gs);
+
+        QString sigName = entry.name.trimmed();
+        if (sigName.isEmpty()) sigName = "Object";
+
+        QString details = QString("SDO | %1").arg(CanOpenDb::formatObjectKey(entry.index, entry.subIndex));
+
+        QTreeWidgetItem *targetParent = devItem;
+        if (const CanOpenObjectEntry *container = db->containerEntry(entry.index)) {
+            QTreeWidgetItem *&group = objectGroups[entry.index];
+            if (!group) {
+                group = new QTreeWidgetItem(devItem);
+                QString groupName = container->name.trimmed();
+                if (groupName.isEmpty())
+                    groupName = QStringLiteral("0x%1").arg(entry.index, 4, 16, QChar('0')).toUpper();
+                group->setText(0, groupName);
+                group->setText(3, "OBJ");
+                group->setCheckState(0, Qt::Unchecked);
+
+                QPixmap groupPix(12, 12);
+                groupPix.fill(QColor("#ffc107"));
+                group->setIcon(0, QIcon(groupPix));
+            }
+            targetParent = group;
+        }
+
+        addSignalTreeItem(targetParent, gs, sigName, devName,
+                      details, entry.accessType, interfaceData);
+    }
+
+    // The EDS file only stores a default node ID; the device's actual address on
+    // the bus is set here per network and applied directly to the signals already
+    // built for it (no tree rebuild needed, so checked/plotted signals are unaffected).
+    auto *nodeSpin = new QSpinBox();
+    nodeSpin->setRange(1, 127);
+    nodeSpin->setValue(nodeId);
+    nodeSpin->setPrefix(tr("Node "));
+    nodeSpin->setToolTip(tr("CANopen node ID used for SDO requests to this device. "
+                             "Override the EDS file's default to match its actual address on the bus."));
+    connect(nodeSpin, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this, db, deviceSdoSignals, devItem, devName](int value) {
+        db->setConfiguredNodeId(value);
+        for (GraphSignal *gs : deviceSdoSignals)
+            gs->setSdoNodeId(static_cast<quint8>(value));
+        // setText() fires the tree's itemChanged signal, which onSignalItemChanged() treats as
+        // a checkbox click and propagates devItem's check state down onto every child signal -
+        // block it so renaming the row doesn't stomp on whichever signals are individually
+        // checked.
+        ui->signalTree->blockSignals(true);
+        devItem->setText(0, QString("%1 (node %2)").arg(devName).arg(value));
+        ui->signalTree->blockSignals(false);
+    });
+    ui->signalTree->setItemWidget(devItem, 1, nodeSpin);
+
+    return devItem;
+}
+
+void GraphWindow::addSdoAddNodePlaceholder(QTreeWidgetItem *sdoRoot, MeasurementNetwork *network,
+                                            const QString &path, const QVariant &interfaceData)
+{
+    QTreeWidgetItem *addItem = new QTreeWidgetItem(sdoRoot);
+    addItem->setText(0, tr("+ Add another node..."));
+    addItem->setText(3, "ADDNODE");
+    QFont f = addItem->font(0);
+    f.setItalic(true);
+    addItem->setFont(0, f);
+    addItem->setForeground(0, QColor("#1976d2"));
+    addItem->setData(0, RoleAddNodeNetwork, QVariant::fromValue(static_cast<void*>(network)));
+    addItem->setData(0, RoleAddNodePath, path);
+    addItem->setData(0, RoleAddNodeInterfaceData, interfaceData);
+}
+
+void GraphWindow::onSignalTreeItemClicked(QTreeWidgetItem *item, int column)
+{
+    (void) column;
+    if (!item || item->text(3) != QStringLiteral("ADDNODE"))
+        return;
+
+    auto *network = static_cast<MeasurementNetwork*>(item->data(0, RoleAddNodeNetwork).value<void*>());
+    const QString path = item->data(0, RoleAddNodePath).toString();
+    const QVariant interfaceData = item->data(0, RoleAddNodeInterfaceData);
+    QTreeWidgetItem *sdoRoot = item->parent();
+    if (!network || !sdoRoot || path.isEmpty())
+        return;
+
+    const CanOpenDb *templateDb = nullptr;
+    int maxNodeId = 0;
+    for (const pCanOpenDb &existingDb : network->_canOpenDbs) {
+        if (existingDb && existingDb->path() == path) {
+            if (!templateDb)
+                templateDb = existingDb.data();
+            maxNodeId = qMax(maxNodeId, qMax(0, existingDb->configuredNodeId()));
+        }
+    }
+    if (!templateDb)
+        return;
+
+    // Clone the already-parsed device in memory instead of re-reading/re-parsing the EDS file
+    // from disk - keeps "Add another node" instant even for object dictionaries with thousands
+    // of entries.
+    pCanOpenDb newDb = QSharedPointer<CanOpenDb>::create(*templateDb);
+    newDb->setConfiguredNodeId(qBound(1, maxNodeId + 1, 127));
+    network->_canOpenDbs.append(newDb);
+
+    // Insert the new device row where the placeholder used to be, then put the placeholder
+    // back right after it, so it stays the trailing row of its EDS file's group. The device
+    // row is built directly at that index (not appended then moved) - moving it afterwards via
+    // takeChild()/insertChild() would silently drop the node/poll spinboxes set on it and its
+    // children via setItemWidget(). Building it also sets check states on a bunch of fresh
+    // items, each of which would otherwise fire itemChanged and re-enter onSignalItemChanged -
+    // block signals so none of that spills over onto unrelated, already-checked rows elsewhere
+    // in the tree.
+    ui->signalTree->blockSignals(true);
+    const int placeholderIndex = sdoRoot->indexOfChild(item);
+    sdoRoot->takeChild(placeholderIndex);
+
+    buildSdoDeviceItem(sdoRoot, newDb, interfaceData, placeholderIndex);
+    sdoRoot->insertChild(placeholderIndex + 1, item);
     ui->signalTree->blockSignals(false);
 }
 

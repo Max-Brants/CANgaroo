@@ -134,8 +134,13 @@ bool MeasurementNetwork::reloadCanOpenDbs(Backend *backend, QStringList *errors)
     bool allSuccess = true;
     for (pCanOpenDb &db : _canOpenDbs) {
         QString errorMsg;
+        const int previousNodeId = db->configuredNodeId();
         pCanOpenDb newDb = backend->loadEds(db->path(), &errorMsg);
         if (newDb) {
+            // Reloading re-parses the EDS from disk, which would otherwise reset the node ID
+            // to the file's static default and discard any override the user configured.
+            if (previousNodeId >= 0)
+                newDb->setConfiguredNodeId(previousNodeId);
             db = newDb;
         } else {
             allSuccess = false;
@@ -189,6 +194,8 @@ bool MeasurementNetwork::saveXML(Backend &backend, QDomDocument &xml, QDomElemen
         QDomElement dbNode = xml.createElement("database");
         dbNode.setAttribute("db-type", "eds");
         dbNode.setAttribute("filename", canOpenDb->path());
+        if (canOpenDb->configuredNodeId() >= 0)
+            dbNode.setAttribute("node-id", canOpenDb->configuredNodeId());
         candbsNode.appendChild(dbNode);
     }
     root.appendChild(candbsNode);
@@ -239,8 +246,13 @@ bool MeasurementNetwork::loadXML(Backend &backend, QDomElement el)
             else log_error(QString("Unable to load LDF: %1").arg(filename));
         } else if (dbType == "eds") {
             pCanOpenDb canOpenDb = backend.loadEds(filename);
-            if (canOpenDb) addCanOpenDb(canOpenDb);
-            else log_error(QString("Unable to load EDS: %1").arg(filename));
+            if (canOpenDb) {
+                if (elDb.hasAttribute("node-id"))
+                    canOpenDb->setConfiguredNodeId(elDb.attribute("node-id").toInt());
+                addCanOpenDb(canOpenDb);
+            } else {
+                log_error(QString("Unable to load EDS: %1").arg(filename));
+            }
         } else {
             addCanDb(backend.loadDbc(filename));
         }

@@ -71,6 +71,7 @@ private slots:
     void executeReloadCanDbs();
     void executeDeleteCanDb();
     void executeDeleteCanOpenDb();
+    void executeDuplicateCanOpenDb();
     void executeDeleteLinDb();
 
 
@@ -90,6 +91,7 @@ private:
     QAction *_actionDeleteInterface;
     QAction *_actionDeleteCanDb;
     QAction *_actionDeleteCanOpenDb;
+    QAction *_actionDuplicateCanOpenDb;
     QAction *_actionDeleteLinDb;
     QAction *_actionAddInterface;
     QAction *_actionAddCanDb;

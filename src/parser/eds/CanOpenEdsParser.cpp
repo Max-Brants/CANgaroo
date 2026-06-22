@@ -96,6 +96,14 @@ bool CanOpenEdsParser::parseFile(const QString &path, CanOpenDb &db, QString *er
         const QString pdoMap = ini.value(QStringLiteral("PDOMapping")).toString().trimmed();
         entry.pdoMappable = pdoMap == QStringLiteral("1") || pdoMap.compare(QStringLiteral("true"), Qt::CaseInsensitive) == 0;
 
+        // A bare "[index]" section (no "subN" suffix) describes a RECORD/ARRAY's container -
+        // stash it separately before "[indexsub0]" (parsed right after, since childGroups()
+        // sorts "index" ahead of "indexsubN") overwrites this same (index, 0) object slot with
+        // the real "highest sub-index supported" VAR entry.
+        if (match.captured(2).isEmpty() && CanOpenDb::isArrayOrRecordObjectType(entry.objectType)) {
+            db.addContainerEntry(entry);
+        }
+
         db.addObject(entry);
         ini.endGroup();
     }

@@ -26,6 +26,7 @@
 #include <QFileDialog>
 #include <QTreeWidget>
 #include <QMessageBox>
+#include <QPushButton>
 
 #include "core/Backend.h"
 #include "core/MeasurementSetup.h"
@@ -57,6 +58,7 @@ SetupDialog::SetupDialog(Backend &backend, QWidget *parent) :
     _actionAddCanDb = new QAction("Add...", this);
     _actionDeleteCanDb = new QAction("Delete", this);
     _actionDeleteCanOpenDb = new QAction("Delete", this);
+    _actionDuplicateCanOpenDb = new QAction("Duplicate for Another Node...", this);
     _actionDeleteLinDb = new QAction("Delete", this);
     _actionReloadCanDbs = new QAction("Reload", this);
 
@@ -94,6 +96,7 @@ SetupDialog::SetupDialog(Backend &backend, QWidget *parent) :
     connect(_actionAddCanDb, &QAction::triggered, this, &SetupDialog::executeAddCanDb);
     connect(_actionDeleteCanDb, &QAction::triggered, this, &SetupDialog::executeDeleteCanDb);
     connect(_actionDeleteCanOpenDb, &QAction::triggered, this, &SetupDialog::executeDeleteCanOpenDb);
+    connect(_actionDuplicateCanOpenDb, &QAction::triggered, this, &SetupDialog::executeDuplicateCanOpenDb);
     connect(_actionDeleteLinDb, &QAction::triggered, this, &SetupDialog::executeDeleteLinDb);
 
     connect(_actionAddInterface, &QAction::triggered, this, &SetupDialog::executeAddInterface);
@@ -233,6 +236,7 @@ void SetupDialog::treeViewContextMenu(const QPoint &pos)
                 contextMenu.addAction(_actionReloadCanDbs);
                 break;
             case SetupDialogTreeItem::type_canopendb:
+                contextMenu.addAction(_actionDuplicateCanOpenDb);
                 contextMenu.addAction(_actionDeleteCanOpenDb);
                 contextMenu.addAction(_actionReloadCanDbs);
                 break;
@@ -432,43 +436,63 @@ void SetupDialog::on_btAddDatabase_clicked()
 
 void SetupDialog::addCanOpenDb(const QModelIndex &parent, const QString &filename)
 {
+    int nextNodeId = 0; // >0 once a duplicate is found, so the new instance doesn't collide
     if (_currentNetwork) {
+        bool foundDuplicate = false;
         for (const auto &existingDb : _currentNetwork->_canOpenDbs) {
             if (existingDb->path() == filename) {
-                QMessageBox::StandardButton reply =
-                    QMessageBox::question(this, tr("Duplicate EDS"),
-                        tr("The file is already loaded:\n%1\n\nDo you want to reload it?").arg(filename),
-                        QMessageBox::Yes | QMessageBox::No);
+                foundDuplicate = true;
+                nextNodeId = qMax(nextNodeId, qMax(0, existingDb->configuredNodeId()) + 1);
+            }
+        }
 
-                if (reply == QMessageBox::Yes) {
-                    SetupDialogTreeItem *root = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
-                    if (root && root->getType() == SetupDialogTreeItem::type_candb_root) {
-                        for (int i = 0; i < root->getChildCount(); ++i) {
-                            SetupDialogTreeItem *child = root->child(i);
-                            if (child->getType() == SetupDialogTreeItem::type_canopendb && child->canOpenDb->path() == filename) {
-                                model->deleteCanOpenDb(model->indexOfItem(child));
-                                break;
-                            }
+        if (foundDuplicate) {
+            QMessageBox box(this);
+            box.setWindowTitle(tr("Duplicate EDS"));
+            box.setText(tr("The file is already loaded:\n%1").arg(filename));
+            box.setInformativeText(tr("Reload replaces the existing device. Add as a new device "
+                                       "keeps it and loads a second instance with its own node "
+                                       "ID — use this to read/plot the same object from "
+                                       "several identical devices on the bus."));
+            QPushButton *reloadBtn = box.addButton(tr("Reload"), QMessageBox::DestructiveRole);
+            QPushButton *addBtn = box.addButton(tr("Add as New Device"), QMessageBox::AcceptRole);
+            box.addButton(QMessageBox::Cancel);
+            box.exec();
+
+            if (box.clickedButton() == reloadBtn) {
+                SetupDialogTreeItem *root = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
+                if (root && root->getType() == SetupDialogTreeItem::type_candb_root) {
+                    for (int i = 0; i < root->getChildCount(); ++i) {
+                        SetupDialogTreeItem *child = root->child(i);
+                        if (child->getType() == SetupDialogTreeItem::type_canopendb && child->canOpenDb->path() == filename) {
+                            model->deleteCanOpenDb(model->indexOfItem(child));
+                            break;
                         }
                     }
+                }
 
-                    QString errorMsg;
-                    pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
-                    if (canOpenDb) {
-                        model->addCanOpenDb(parent, canOpenDb);
-                    } else {
-                        QMessageBox::critical(this, tr("Reload Failed"),
-                            tr("Failed to reload EDS:\n%1\n\nReason: %2").arg(filename, errorMsg));
-                    }
+                QString errorMsg;
+                pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
+                if (canOpenDb) {
+                    model->addCanOpenDb(parent, canOpenDb);
+                } else {
+                    QMessageBox::critical(this, tr("Reload Failed"),
+                        tr("Failed to reload EDS:\n%1\n\nReason: %2").arg(filename, errorMsg));
                 }
                 return;
+            } else if (box.clickedButton() != addBtn) {
+                return; // Cancel
             }
+            // "Add as New Device" falls through to the shared load path below.
         }
     }
 
     QString errorMsg;
     pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
     if (canOpenDb) {
+        if (nextNodeId > 0) {
+            canOpenDb->setConfiguredNodeId(qBound(1, nextNodeId, 127));
+        }
         model->addCanOpenDb(parent, canOpenDb);
         if (!errorMsg.isEmpty()) {
             QMessageBox::warning(this, tr("EDS Warning"), errorMsg);
@@ -578,6 +602,38 @@ void SetupDialog::executeDeleteCanOpenDb()
 void SetupDialog::executeDeleteLinDb()
 {
     model->deleteLinDb(getSelectedIndex());
+}
+
+void SetupDialog::executeDuplicateCanOpenDb()
+{
+    // Lets you read/plot the same SDO object from several identical devices on the bus
+    // without re-browsing the file system for the same EDS file each time.
+    const QModelIndex index = getSelectedIndex();
+    SetupDialogTreeItem *item = static_cast<SetupDialogTreeItem*>(index.internalPointer());
+    if (!item || item->getType() != SetupDialogTreeItem::type_canopendb || !item->canOpenDb)
+        return;
+
+    const QModelIndex parent = index.parent();
+    SetupDialogTreeItem *parentItem = static_cast<SetupDialogTreeItem*>(parent.internalPointer());
+    if (!parentItem || !parentItem->network)
+        return;
+
+    const QString filename = item->canOpenDb->path();
+    int nextNodeId = 1;
+    for (const auto &existingDb : parentItem->network->_canOpenDbs) {
+        if (existingDb->path() == filename)
+            nextNodeId = qMax(nextNodeId, qMax(0, existingDb->configuredNodeId()) + 1);
+    }
+
+    QString errorMsg;
+    pCanOpenDb canOpenDb = _backend->loadEds(filename, &errorMsg);
+    if (canOpenDb) {
+        canOpenDb->setConfiguredNodeId(qBound(1, nextNodeId, 127));
+        model->addCanOpenDb(parent, canOpenDb);
+    } else {
+        QMessageBox::critical(this, tr("EDS Error"),
+            tr("Failed to load EDS file:\n%1\n\nReason: %2").arg(filename, errorMsg));
+    }
 }
 
 void SetupDialog::on_btRemoveDatabase_clicked()

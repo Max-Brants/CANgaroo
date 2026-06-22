@@ -386,7 +386,11 @@ SdoWindow::SdoWindow(QWidget *parent, Backend &backend)
         updateActionState();
         emit settingsChanged(this);
     });
-    connect(_nodeSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int) {
+    connect(_nodeSpin, qOverload<int>(&QSpinBox::valueChanged), this, [this](int value) {
+        // The EDS file only stores a default node ID; persist the user's override on the
+        // shared CanOpenDb so GraphWindow/TxGeneratorWindow (which read the same object) agree.
+        if (CanOpenDb *db = mutableCurrentDb())
+            db->setConfiguredNodeId(value);
         updateActionState();
         emit settingsChanged(this);
     });
@@ -772,8 +776,14 @@ void SdoWindow::populateObjects(const QString &preferredObjectKey)
             }
         }
 
+        const CanOpenObjectEntry *container = db->containerEntry(it.key());
+
         QTreeWidgetItem *parentItem = new QTreeWidgetItem(_objectTree);
-        if (sub0Entry)
+        if (container)
+        {
+            fillObjectTreeItem(parentItem, *container);
+        }
+        else if (sub0Entry)
         {
             fillObjectTreeItem(parentItem, *sub0Entry);
         }
@@ -786,14 +796,17 @@ void SdoWindow::populateObjects(const QString &preferredObjectKey)
 
         for (const CanOpenObjectEntry &entry : entries)
         {
-            if (sub0Entry && entry.subIndex == 0)
+            if (!container && sub0Entry && entry.subIndex == 0)
                 continue;
             QTreeWidgetItem *child = new QTreeWidgetItem(parentItem);
             fillObjectTreeItem(child, entry);
         }
+
+        // RECORD/ARRAY objects can have many sub-entries; collapse them by default so the
+        // tree doesn't dump the whole member list in your face. Plain VARs stay expanded.
+        parentItem->setExpanded(!container);
     }
 
-    _objectTree->expandToDepth(0);
     applyFilter();
     selectObjectKey(preferredObjectKey);
     if (!_objectTree->currentItem() && _objectTree->topLevelItemCount() > 0)
@@ -1160,6 +1173,11 @@ MeasurementNetwork *SdoWindow::currentNetwork() const
 }
 
 const CanOpenDb *SdoWindow::currentDb() const
+{
+    return mutableCurrentDb();
+}
+
+CanOpenDb *SdoWindow::mutableCurrentDb() const
 {
     MeasurementNetwork *network = currentNetwork();
     if (!network)

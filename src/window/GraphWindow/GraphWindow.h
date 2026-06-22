@@ -25,6 +25,7 @@
 #include "core/ConfigurableWidget.h"
 #include "core/MeasurementSetup.h"
 #include "core/DBC/CanDbSignal.h"
+#include "core/DBC/CanOpenDb.h"
 #include "GraphSignal.h"
 #include "VisualizationWidget.h"
 
@@ -102,6 +103,7 @@ private slots:
 
     void onSearchTextChanged(const QString &text);
     void onSignalItemChanged(class QTreeWidgetItem *item, int column);
+    void onSignalTreeItemClicked(class QTreeWidgetItem *item, int column);
     void onAddGraphClicked();
 
     void onResumeMeasurement();
@@ -135,6 +137,20 @@ private:
 
     void filterSignalTree(const QString &searchText);
     bool shouldShowSignalItem(class QTreeWidgetItem *item, const QString &searchText);
+
+    void addSignalTreeItem(class QTreeWidgetItem *parentItem, GraphSignal *gs,
+                            const QString &sigName, const QString &msgName,
+                            const QString &details, const QString &comment,
+                            const QVariant &interfaceData);
+    // insertIndex < 0 appends at the end (used during the initial bulk populate); otherwise the
+    // device row is inserted directly at that position so its child item widgets (node/poll
+    // spinboxes) never have to be relocated afterwards - QTreeWidget drops setItemWidget()
+    // widgets when an item is taken out via takeChild()/insertChild().
+    class QTreeWidgetItem *buildSdoDeviceItem(class QTreeWidgetItem *sdoRoot, const pCanOpenDb &db,
+                                               const QVariant &interfaceData, int insertIndex = -1);
+
+    void addSdoAddNodePlaceholder(class QTreeWidgetItem *sdoRoot, MeasurementNetwork *network,
+                                   const QString &path, const QVariant &interfaceData);
 
     QThread* _decoderThread = nullptr;
     SignalDecoderWorker* _decoderWorker = nullptr;

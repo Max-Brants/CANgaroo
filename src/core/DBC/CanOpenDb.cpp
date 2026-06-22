@@ -47,6 +47,7 @@ void CanOpenDb::clear()
     _productName.clear();
     _configuredNodeId = -1;
     _objects.clear();
+    _containerEntries.clear();
     _tpdos.clear();
     _rpdos.clear();
 }
@@ -70,6 +71,17 @@ const QList<CanOpenPdo> &CanOpenDb::rpdos() const { return _rpdos; }
 void CanOpenDb::addObject(const CanOpenObjectEntry &entry)
 {
     _objects.insert(objectKey(entry.index, entry.subIndex), entry);
+}
+
+const CanOpenObjectEntry *CanOpenDb::containerEntry(quint16 index) const
+{
+    const auto it = _containerEntries.constFind(index);
+    return (it == _containerEntries.constEnd()) ? nullptr : &it.value();
+}
+
+void CanOpenDb::addContainerEntry(const CanOpenObjectEntry &entry)
+{
+    _containerEntries.insert(entry.index, entry);
 }
 
 const CanOpenObjectEntry *CanOpenDb::findObject(quint16 index, quint8 subIndex) const
@@ -272,6 +284,13 @@ bool CanOpenDb::accessAllowsRead(const QString &accessType)
 bool CanOpenDb::accessAllowsWrite(const QString &accessType)
 {
     return accessType.trimmed().toLower().contains(QLatin1Char('w'));
+}
+
+bool CanOpenDb::isArrayOrRecordObjectType(const QString &objectType)
+{
+    bool ok = false;
+    const quint32 value = objectType.trimmed().toUInt(&ok, 0);
+    return ok && (value == 0x8 || value == 0x9);
 }
 
 bool CanOpenDb::parseIntegerExpression(const QString &text, quint8 nodeId, quint32 *value)

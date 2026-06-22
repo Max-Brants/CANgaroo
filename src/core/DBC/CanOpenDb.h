@@ -84,6 +84,13 @@ public:
     void addObject(const CanOpenObjectEntry &entry);
     const CanOpenObjectEntry *findObject(quint16 index, quint8 subIndex = 0) const;
 
+    // EDS files describe a RECORD/ARRAY's container (ObjectType, name) in a bare "[index]"
+    // section, separate from "[indexsub0]" - the actual "highest sub-index supported" VAR
+    // entry. Both notionally sit at sub-index 0, so the container is tracked here instead of
+    // colliding with the sub0 entry in the object map (see CanOpenEdsParser).
+    const CanOpenObjectEntry *containerEntry(quint16 index) const;
+    void addContainerEntry(const CanOpenObjectEntry &entry);
+
     const QList<CanOpenPdo> &tpdos() const;
     const QList<CanOpenPdo> &rpdos() const;
     void addPdo(const CanOpenPdo &pdo);
@@ -111,6 +118,10 @@ public:
     static bool accessAllowsRead(const QString &accessType);
     static bool accessAllowsWrite(const QString &accessType);
 
+    // True if the EDS ObjectType value denotes a container with multiple sub-entries
+    // (ARRAY = 0x8, RECORD = 0x9), as opposed to a plain VAR (0x7).
+    static bool isArrayOrRecordObjectType(const QString &objectType);
+
 private:
     QString _path;
     QString _lastError;
@@ -119,6 +130,7 @@ private:
     QString _productName;
     int _configuredNodeId = -1;
     CanOpenObjectMap _objects;
+    QMap<quint16, CanOpenObjectEntry> _containerEntries;
     QList<CanOpenPdo> _tpdos;
     QList<CanOpenPdo> _rpdos;
 };

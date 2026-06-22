@@ -55,6 +55,7 @@ public:
     LinSignal   *asLinSignal() const noexcept;
     const CanOpenObjectEntry *asSdoEntry() const noexcept;
     quint8 sdoNodeId() const noexcept;
+    void setSdoNodeId(quint8 nodeId);
 
     // Per-object poll cadence, user-adjustable (see GraphWindow's SDO signal tree column).
     int sdoPollIntervalMs() const noexcept;
