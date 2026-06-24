@@ -52,8 +52,13 @@ QString GraphSignal::name() const
 {
     if (isLin())
         return std::get<LinData>(_data).signal->name();
-    if (isSdo())
-        return std::get<SdoData>(_data).entry->name;
+    if (isSdo()) {
+        const auto &d = std::get<SdoData>(_data);
+        // Visualizations (legend labels, tooltips, CSV headers) all key off this name, so the
+        // node has to be in it - otherwise the same object read from two different nodes is
+        // impossible to tell apart on a chart.
+        return QStringLiteral("%1 (node %2)").arg(d.entry->name).arg(d.nodeId);
+    }
     return std::get<CanData>(_data).signal->name();
 }
 
