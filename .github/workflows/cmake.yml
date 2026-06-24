@@ -219,6 +219,8 @@ jobs:
       CANLIB_DIR_BIN: "C:/Program Files (x86)/Kvaser/Canlib/bin_x64"
       CANLIB_DIR_LIB: "C:/Program Files (x86)/Kvaser/Canlib/Lib/x64"
       CANLIB_DIR: "C:/Program Files (x86)/Kvaser/Canlib/"
+      # IXXAT VCI4 SDK — direct download from HMS's own CDN (update if HMS releases a newer build).
+      IXXAT_VCI4_URL: "https://hmsnetworks.blob.core.windows.net/nlw/docs/default-source/products/ixxat/monitored/pc-interface-cards/vci-v4-0-1374-windows-11-10.zip?sfvrsn=2d1dfdd7_92"
 
     defaults:
       run:
@@ -292,6 +294,36 @@ jobs:
             Write-Warning "Failed to copy canlib32.lib: $_"
           }
 
+      - name: Download and install IXXAT VCI4 SDK (Windows)
+        shell: pwsh
+        run: |
+          $zip = "$env:TEMP\ixxat_vci4.zip"
+          Invoke-WebRequest -Uri $env:IXXAT_VCI4_URL -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:TEMP\ixxat_vci4" -Force
+
+          $installer = Get-ChildItem -Path "$env:TEMP\ixxat_vci4" -Filter "Ixxat VCI Setup*.exe" -Recurse | Select-Object -First 1
+          $installDir = "C:\ixxat-vci4"
+
+          # The installer is built with Inno Setup (verified via its file version info),
+          # so it accepts Inno's standard silent-install switches.
+          Start-Process -FilePath $installer.FullName `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installDir`"" `
+            -Wait
+
+          # Copy SDK into source tree so IxxatDriver.pri finds it automatically
+          $SDK_SRC = "$installDir\sdk\vci"
+          $SDK_DEST = "src\driver\IxxatDriver\vci-sdk"
+          New-Item -ItemType Directory -Force -Path $SDK_DEST | Out-Null
+
+          try {
+            Write-Host "=== Copy SDK from $SDK_SRC ==="
+            Copy-Item "$SDK_SRC\inc" "$SDK_DEST\inc" -Recurse -Force -ErrorAction Stop
+            Copy-Item "$SDK_SRC\lib" "$SDK_DEST\lib" -Recurse -Force -ErrorAction Stop
+            Copy-Item "$SDK_SRC\bin" "$SDK_DEST\bin" -Recurse -Force -ErrorAction Stop
+          } catch {
+            Write-Warning "Failed to copy IXXAT VCI4 SDK: $_"
+          }
+
       - name: Verify Qt6 installation
         run: |
           qmake6 --version
@@ -299,7 +331,7 @@ jobs:
 
       - name: Configure build (Qt6 qmake)
         run: |
-          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan CONFIG+=zscanfd
+          qmake6 CONFIG+=release CONFIG+=kvaser CONFIG+=peakcan CONFIG+=zscanfd CONFIG+=ixxat
 
       - name: Build
         run: |
@@ -377,6 +409,8 @@ jobs:
         run: |
           cp src/driver/KvaserDriver/canlib-sdk/Bin/canlib32.dll dist/
           cp src/driver/PeakCanDriver/pcan-basic-api/x64/PCANBasic.dll dist/
+          cp src/driver/IxxatDriver/vci-sdk/bin/x64/release/vciapi.dll dist/
+          cp src/driver/IxxatDriver/vci-sdk/bin/x64/release/vcinpl2.dll dist/
 
       - name: Bundle example scripts
         run: |

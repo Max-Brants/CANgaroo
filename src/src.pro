@@ -98,6 +98,14 @@ kvaser {
     include($$PWD/driver/KvaserDriver/KvaserDriver.pri)
 }
 
+# Pass CONFIG+=ixxat to qmake to enable the IXXAT VCI4 driver.
+# Requires the IXXAT VCI4 SDK (vcinpl2.h + vciapi.lib/vcinpl2.lib).
+# Set IXXAT_VCI_SDK_DIR=<path to SDK's vci folder> (see IxxatDriver.pri).
+win32:ixxat {
+    DEFINES += IXXAT_DRIVER
+    include($$PWD/driver/IxxatDriver/IxxatDriver.pri)
+}
+
 # Vector CAN driver — always enabled via Qt serialbus.
 # Requires the Vector XL Driver Library installed on the target machine at runtime.
 include($$PWD/driver/VectorDriver/VectorDriver.pri)

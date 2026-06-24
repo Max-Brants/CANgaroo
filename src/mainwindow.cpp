@@ -82,6 +82,10 @@
 #include "driver/KvaserDriver/KvaserDriver.h"
 #endif
 
+#ifdef IXXAT_DRIVER
+#include "driver/IxxatDriver/IxxatDriver.h"
+#endif
+
 #if defined(_WIN32)
 #ifdef ZSCANFD_DRIVER
 #include "driver/ZsCanFdDriver/ZsCanFdDriver.h"
@@ -235,6 +239,10 @@ void MainWindow::initDrivers()
 
 #ifdef KVASER_DRIVER
     Backend::instance().addCanDriver(*(new KvaserDriver(Backend::instance())));
+#endif
+
+#ifdef IXXAT_DRIVER
+    Backend::instance().addCanDriver(*(new IxxatDriver(Backend::instance())));
 #endif
 
 #ifdef VECTOR_DRIVER
