@@ -315,15 +315,45 @@ jobs:
 
           # The installer is built with Inno Setup (verified via its file version info),
           # so it accepts Inno's standard silent-install switches.
+          # /TYPE="full" is required: the installer's default silent type only installs
+          # drivers, not the SDK (confirmed via /SAVEINF - the default omits the "sdk"
+          # component), so without it inc/lib/bin never get written at all.
           # /LOG writes Inno's own step-by-step install log, which Inno flushes to disk
           # as it goes, so even if this step times out, the log up to that point survives
           # and is uploaded as an artifact to show what it was doing.
           $logPath = "$pwd\ixxat_install.log"
           Write-Host "=== Running installer silently ==="
           Start-Process -FilePath $installer.FullName `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/LOG=`"$logPath`"" `
-            -Wait
-          Write-Host "Installer finished"
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TYPE=`"full`"", "/LOG=`"$logPath`"" `
+            -NoNewWindow
+
+          # The installer may not signal completion back to Start-Process even after it
+          # has finished writing the SDK to disk (e.g. it lingers on a trailing wait that
+          # never resolves headlessly), so don't trust -Wait to know when it's done. Poll
+          # for the actual files IxxatDriver.pri / the bundling step need instead - across
+          # inc, lib and bin, since copy order inside the installer isn't guaranteed.
+          $markers = @(
+            "$installDir/sdk/vci/inc/vcinpl2.h",
+            "$installDir/sdk/vci/lib/x64/release/vciapi.lib",
+            "$installDir/sdk/vci/lib/x64/release/vcinpl2.lib",
+            "$installDir/sdk/vci/bin/x64/release/vciapi.dll",
+            "$installDir/sdk/vci/bin/x64/release/vcinpl2.dll"
+          )
+          Write-Host "=== Waiting for SDK files to appear under $installDir ==="
+          $deadline = (Get-Date).AddMinutes(5)
+          do {
+            $missing = $markers | Where-Object { -not (Test-Path $_) }
+            if ($missing.Count -eq 0) { break }
+            Start-Sleep -Seconds 5
+          } while ((Get-Date) -lt $deadline)
+
+          if ($missing.Count -eq 0) {
+            Write-Host "SDK files detected on disk."
+          } else {
+            Write-Warning "Still missing after 5 minutes: $($missing -join ', '). Log so far:"
+            Get-Content $logPath -ErrorAction SilentlyContinue | Write-Host
+            throw "IXXAT SDK files never fully appeared under $installDir"
+          }
 
           # Copy SDK into source tree so IxxatDriver.pri finds it automatically
           $SDK_SRC = "$installDir\sdk\vci"
