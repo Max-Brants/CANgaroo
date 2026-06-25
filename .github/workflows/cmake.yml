@@ -315,6 +315,10 @@ jobs:
 
           # The installer is built with Inno Setup (verified via its file version info),
           # so it accepts Inno's standard silent-install switches.
+          # /DIR must be explicit: without it, a fresh machine gets Inno's real default
+          # (C:\Program Files\HMS\Ixxat VCI - confirmed from an actual CI run's /LOG),
+          # not $installDir. It only looked like the default matched on a dev machine
+          # that had previously installed there, since Inno reuses the prior install path.
           # /TYPE="full" is required: the installer's default silent type only installs
           # drivers, not the SDK (confirmed via /SAVEINF - the default omits the "sdk"
           # component), so without it inc/lib/bin never get written at all.
@@ -324,7 +328,7 @@ jobs:
           $logPath = "$pwd\ixxat_install.log"
           Write-Host "=== Running installer silently ==="
           Start-Process -FilePath $installer.FullName `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TYPE=`"full`"", "/LOG=`"$logPath`"" `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TYPE=`"full`"", "/DIR=`"$installDir`"", "/LOG=`"$logPath`"" `
             -NoNewWindow
 
           # The installer may not signal completion back to Start-Process even after it
