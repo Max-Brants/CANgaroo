@@ -296,19 +296,34 @@ jobs:
 
       - name: Download and install IXXAT VCI4 SDK (Windows)
         shell: pwsh
+        timeout-minutes: 10
         run: |
+
+          $ProgressPreference = 'SilentlyContinue'
+
+          Write-Host "=== Downloading IXXAT VCI4 SDK ==="
           $zip = "$env:TEMP\ixxat_vci4.zip"
-          Invoke-WebRequest -Uri $env:IXXAT_VCI4_URL -OutFile $zip
+          Invoke-WebRequest -Uri "https://hmsnetworks.blob.core.windows.net/nlw/docs/default-source/products/ixxat/monitored/pc-interface-cards/vci-v4-0-1374-windows-11-10.zip?sfvrsn=2d1dfdd7_92" -OutFile $zip
+          Write-Host "Downloaded $((Get-Item $zip).Length) bytes"
+
+          Write-Host "=== Extracting archive ==="
           Expand-Archive -Path $zip -DestinationPath "$env:TEMP\ixxat_vci4" -Force
 
           $installer = Get-ChildItem -Path "$env:TEMP\ixxat_vci4" -Filter "Ixxat VCI Setup*.exe" -Recurse | Select-Object -First 1
+          Write-Host "Found installer: $($installer.FullName)"
           $installDir = "C:\ixxat-vci4"
 
           # The installer is built with Inno Setup (verified via its file version info),
           # so it accepts Inno's standard silent-install switches.
-          Start-Process -FilePath $installer.FullName `
+          Write-Host "=== Running installer silently ==="
+          $proc = Start-Process -FilePath $installer.FullName `
             -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installDir`"" `
-            -Wait
+            -PassThru
+          if (-not $proc.WaitForExit(5 * 60 * 1000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            throw "IXXAT installer did not finish within 5 minutes - likely stuck on a dialog (e.g. a driver signature confirmation) that CI cannot answer."
+          }
+          Write-Host "Installer exited with code $($proc.ExitCode)"
 
           # Copy SDK into source tree so IxxatDriver.pri finds it automatically
           $SDK_SRC = "$installDir\sdk\vci"
@@ -320,6 +335,7 @@ jobs:
             Copy-Item "$SDK_SRC\inc" "$SDK_DEST\inc" -Recurse -Force -ErrorAction Stop
             Copy-Item "$SDK_SRC\lib" "$SDK_DEST\lib" -Recurse -Force -ErrorAction Stop
             Copy-Item "$SDK_SRC\bin" "$SDK_DEST\bin" -Recurse -Force -ErrorAction Stop
+            Write-Host "SDK copy complete"
           } catch {
             Write-Warning "Failed to copy IXXAT VCI4 SDK: $_"
           }
