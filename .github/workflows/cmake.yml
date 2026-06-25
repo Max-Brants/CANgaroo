@@ -311,19 +311,19 @@ jobs:
 
           $installer = Get-ChildItem -Path "$env:TEMP\ixxat_vci4" -Filter "Ixxat VCI Setup*.exe" -Recurse | Select-Object -First 1
           Write-Host "Found installer: $($installer.FullName)"
-          $installDir = "C:\ixxat-vci4"
+          $installDir = "C:/ixxat-vci4"
 
           # The installer is built with Inno Setup (verified via its file version info),
           # so it accepts Inno's standard silent-install switches.
+          # /LOG writes Inno's own step-by-step install log, which Inno flushes to disk
+          # as it goes, so even if this step times out, the log up to that point survives
+          # and is uploaded as an artifact to show what it was doing.
+          $logPath = "$pwd\ixxat_install.log"
           Write-Host "=== Running installer silently ==="
-          $proc = Start-Process -FilePath $installer.FullName `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/DIR=`"$installDir`"" `
-            -PassThru
-          if (-not $proc.WaitForExit(5 * 60 * 1000)) {
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            throw "IXXAT installer did not finish within 5 minutes - likely stuck on a dialog (e.g. a driver signature confirmation) that CI cannot answer."
-          }
-          Write-Host "Installer exited with code $($proc.ExitCode)"
+          Start-Process -FilePath $installer.FullName `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/LOG=`"$logPath`"" `
+            -Wait
+          Write-Host "Installer finished"
 
           # Copy SDK into source tree so IxxatDriver.pri finds it automatically
           $SDK_SRC = "$installDir\sdk\vci"
@@ -339,6 +339,14 @@ jobs:
           } catch {
             Write-Warning "Failed to copy IXXAT VCI4 SDK: $_"
           }
+
+      - name: Upload IXXAT installer log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ixxat-install-log
+          path: ixxat_install.log
+          if-no-files-found: ignore
 
       - name: Verify Qt6 installation
         run: |
