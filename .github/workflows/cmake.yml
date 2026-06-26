@@ -313,29 +313,12 @@ jobs:
           Write-Host "Found installer: $($installer.FullName)"
           $installDir = "C:/ixxat-vci4"
 
-          # The installer is built with Inno Setup (verified via its file version info),
-          # so it accepts Inno's standard silent-install switches.
-          # /DIR must be explicit: without it, a fresh machine gets Inno's real default
-          # (C:\Program Files\HMS\Ixxat VCI - confirmed from an actual CI run's /LOG),
-          # not $installDir. It only looked like the default matched on a dev machine
-          # that had previously installed there, since Inno reuses the prior install path.
-          # /TYPE="full" is required: the installer's default silent type only installs
-          # drivers, not the SDK (confirmed via /SAVEINF - the default omits the "sdk"
-          # component), so without it inc/lib/bin never get written at all.
-          # /LOG writes Inno's own step-by-step install log, which Inno flushes to disk
-          # as it goes, so even if this step times out, the log up to that point survives
-          # and is uploaded as an artifact to show what it was doing.
           $logPath = "$pwd\ixxat_install.log"
           Write-Host "=== Running installer silently ==="
-          Start-Process -FilePath $installer.FullName `
+          $proc = Start-Process -FilePath $installer.FullName `
             -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/TYPE=`"full`"", "/DIR=`"$installDir`"", "/LOG=`"$logPath`"" `
-            -NoNewWindow
+            -NoNewWindow -PassThru
 
-          # The installer may not signal completion back to Start-Process even after it
-          # has finished writing the SDK to disk (e.g. it lingers on a trailing wait that
-          # never resolves headlessly), so don't trust -Wait to know when it's done. Poll
-          # for the actual files IxxatDriver.pri / the bundling step need instead - across
-          # inc, lib and bin, since copy order inside the installer isn't guaranteed.
           $markers = @(
             "$installDir/sdk/vci/inc/vcinpl2.h",
             "$installDir/sdk/vci/lib/x64/release/vciapi.lib",
@@ -352,7 +335,8 @@ jobs:
           } while ((Get-Date) -lt $deadline)
 
           if ($missing.Count -eq 0) {
-            Write-Host "SDK files detected on disk."
+            Write-Host "SDK files detected on disk. Stopping installer (likely still stuck registering drivers we don't need)."
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
           } else {
             Write-Warning "Still missing after 5 minutes: $($missing -join ', '). Log so far:"
             Get-Content $logPath -ErrorAction SilentlyContinue | Write-Host
@@ -373,14 +357,6 @@ jobs:
           } catch {
             Write-Warning "Failed to copy IXXAT VCI4 SDK: $_"
           }
-
-      - name: Upload IXXAT installer log
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ixxat-install-log
-          path: ixxat_install.log
-          if-no-files-found: ignore
 
       - name: Verify Qt6 installation
         run: |
