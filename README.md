@@ -9,6 +9,7 @@
 | **SocketCAN** | ✅ | — | Any kernel CAN interface (`can0`, `vcan0`, …) |
 | **PEAK PCAN** | ✅ | ✅ | PCAN-USB, PCAN-USB Pro, PCAN-PCIe, … via PCAN-Basic SDK (`CONFIG+=peakcan`) |
 | **Kvaser** | ✅ | ✅ | USB/CAN Leaf and other Kvaser devices via CANlib SDK (`CONFIG+=kvaser`) |
+| **IXXAT** | — | ✅ | IXXAT USB-to-CAN devices via VCI4 SDK (`CONFIG+=ixxat`) |
 | **Vector** | — | ✅ | VN-series and other Vector devices via Qt serialbus (XL Driver Library required at runtime), CAN FD supported |
 | **TinyCAN** | ✅ | ✅ | TinyCAN USB adapters via Qt serialbus (enable in Measurement > Driver menu) |
 | **Candlelight / CANable / CANnectivity** | ✅ | ✅ | CANable (Candlelight firmware), MKS CANable, cantact, CANnectivity, and other gs_usb devices. Multi-channel devices supported. CAN FD supported. |
@@ -20,7 +21,7 @@
 ## ⚙️ Features
 
 *   **Real-time CAN/CAN-FD/LIN Decoding**: Support for standard CAN, high-speed CAN-FD, and LIN bus frames.
-*   **Wide Hardware Compatibility**: Works with **SocketCAN** (Linux), **PEAK PCAN**, **Kvaser**, **Vector**, **TinyCAN**, **CANable**, **Candlelight**, **SLCAN**, **CANblaster** (UDP) and **ZsCanFd**.
+*   **Wide Hardware Compatibility**: Works with **SocketCAN** (Linux), **PEAK PCAN**, **Kvaser**, **IXXAT**, **Vector**, **TinyCAN**, **CANable**, **Candlelight**, **SLCAN**, **CANblaster** (UDP) and **ZsCanFd**.
 *   **DBC, EDS & LDF Database Support**: Load multiple `.dbc` files for CAN signal decoding, `.eds` files for CANopen object dictionaries / PDO mapping, and `.ldf` files for LIN bus signal decoding.
 *   **Powerful Data Visualization**: Integrated Graphing tools supporting Time-series, Scatter charts, Text-based monitoring, and interactive Gauge views with zoom and live tooltips. Supports both CAN and LIN signals.
 *   **Advanced Filtering & Logging**: Isolate critical data with live filters and export captures for offline analysis.
@@ -119,6 +120,11 @@ windeployqt --release cangaroo.exe
   1. Install the [Kvaser CANlib SDK](https://www.kvaser.com/downloads-kvaser/) (V5.51.461 or newer).
   2. Build with `qmake CONFIG+=kvaser CANLIB_DIR="C:/path/to/Kvaser/Canlib"`.
   3. Place `canlib32.dll` (from `Canlib/Bin/`) next to the built `.exe`.
+
+**IXXAT** (`CONFIG+=ixxat`) — Windows only:
+  1. Install the [IXXAT VCI4 SDK](https://www.ixxat.com/products/products-detail/usb-can-interfaces) (or extract its `vci/` folder to `src/driver/IxxatDriver/vci-sdk/`).
+  2. Build with `qmake CONFIG+=ixxat IXXAT_VCI_SDK_DIR="C:/path/to/sdk/vci"` (omit `IXXAT_VCI_SDK_DIR` if using the `vci-sdk/` folder).
+  3. Place `vciapi.dll` and `vcinpl2.dll` (from the SDK's `bin/x64/release/`) next to the built `.exe`.
 
 **Vector** (always enabled) — Windows only:
   * Install the [Vector XL Driver Library](https://www.vector.com/int/en/products/products-a-z/libraries-drivers/xl-driver-library/) on the target machine.
