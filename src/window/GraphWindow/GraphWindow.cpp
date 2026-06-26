@@ -1133,9 +1133,6 @@ QTreeWidgetItem *GraphWindow::buildSdoDeviceItem(QTreeWidgetItem *sdoRoot, const
                       details, entry.accessType, interfaceData);
     }
 
-    // The EDS file only stores a default node ID; the device's actual address on
-    // the bus is set here per network and applied directly to the signals already
-    // built for it (no tree rebuild needed, so checked/plotted signals are unaffected).
     auto *nodeSpin = new QSpinBox();
     nodeSpin->setRange(1, 127);
     nodeSpin->setValue(nodeId);
@@ -1147,10 +1144,7 @@ QTreeWidgetItem *GraphWindow::buildSdoDeviceItem(QTreeWidgetItem *sdoRoot, const
         db->setConfiguredNodeId(value);
         for (GraphSignal *gs : deviceSdoSignals)
             gs->setSdoNodeId(static_cast<quint8>(value));
-        // setText() fires the tree's itemChanged signal, which onSignalItemChanged() treats as
-        // a checkbox click and propagates devItem's check state down onto every child signal -
-        // block it so renaming the row doesn't stomp on whichever signals are individually
-        // checked.
+
         ui->signalTree->blockSignals(true);
         devItem->setText(0, QString("%1 (node %2)").arg(devName).arg(value));
         ui->signalTree->blockSignals(false);
@@ -1200,21 +1194,10 @@ void GraphWindow::onSignalTreeItemClicked(QTreeWidgetItem *item, int column)
     if (!templateDb)
         return;
 
-    // Clone the already-parsed device in memory instead of re-reading/re-parsing the EDS file
-    // from disk - keeps "Add another node" instant even for object dictionaries with thousands
-    // of entries.
     pCanOpenDb newDb = QSharedPointer<CanOpenDb>::create(*templateDb);
     newDb->setConfiguredNodeId(qBound(1, maxNodeId + 1, 127));
     network->_canOpenDbs.append(newDb);
 
-    // Insert the new device row where the placeholder used to be, then put the placeholder
-    // back right after it, so it stays the trailing row of its EDS file's group. The device
-    // row is built directly at that index (not appended then moved) - moving it afterwards via
-    // takeChild()/insertChild() would silently drop the node/poll spinboxes set on it and its
-    // children via setItemWidget(). Building it also sets check states on a bunch of fresh
-    // items, each of which would otherwise fire itemChanged and re-enter onSignalItemChanged -
-    // block signals so none of that spills over onto unrelated, already-checked rows elsewhere
-    // in the tree.
     ui->signalTree->blockSignals(true);
     const int placeholderIndex = sdoRoot->indexOfChild(item);
     sdoRoot->takeChild(placeholderIndex);
@@ -1276,6 +1259,12 @@ void GraphWindow::onSignalItemChanged(QTreeWidgetItem *item, int column)
 
     ui->signalTree->blockSignals(true);
     Qt::CheckState state = item->checkState(0);
+
+    if (state == Qt::Checked && item->childCount() > 0) {
+        item->setCheckState(0, Qt::Unchecked);
+        ui->signalTree->blockSignals(false);
+        return;
+    }
 
     auto propagateDown = [&](auto self, QTreeWidgetItem *parentItem, Qt::CheckState checkState) -> void {
         for (int i = 0; i < parentItem->childCount(); ++i) {
