@@ -66,6 +66,15 @@ Frames {
 }
 
 // ---------------------------------------------------------------------------
+// Sporadic frames
+// ---------------------------------------------------------------------------
+
+Sporadic_frames {
+    // Sent by master only when LightIntensity_S2 or LightMode_S2 changes.
+    LightControl_Sporadic: MasterToSlave2;
+}
+
+// ---------------------------------------------------------------------------
 // Signal encoding types
 // ---------------------------------------------------------------------------
 
@@ -171,13 +180,14 @@ Node_attributes {
 // ---------------------------------------------------------------------------
 
 Schedule_tables {
-    // Normal operation: all four frames polled at equal 10 ms intervals.
-    // Total cycle: 40 ms  →  Slave1 at 25 Hz, Slave2 at 25 Hz.
+    // Normal operation: all four frames polled at equal 20 ms intervals,
+    // plus a sporadic slot for light control changes.
+    // Total cycle: 50 ms
     NormalOperation {
-        MasterToSlave1  delay 10 ms;
-        Slave1ToMaster  delay 10 ms;
-        MasterToSlave2  delay 10 ms;
-        Slave2ToMaster  delay 10 ms;
+        MasterToSlave1        delay 20 ms;
+        Slave1ToMaster        delay 20 ms;
+        LightControl_Sporadic delay 10 ms;
+        Slave2ToMaster        delay 20 ms;
     }
 
     // Fast motor control: Slave1 polled twice per cycle for tighter speed loop,

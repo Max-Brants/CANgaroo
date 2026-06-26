@@ -1,6 +1,7 @@
 /*
 
   Copyright (c) 2015, 2016 Hubert Denkmair
+  Copyright (c) 2026 Schildkroet
 
   This file is part of cangaroo.
 

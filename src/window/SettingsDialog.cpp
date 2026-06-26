@@ -1,7 +1,27 @@
+/*
+  Copyright (c) 2026 Schildkroet
+
+  This file is part of cangaroo.
+
+  cangaroo is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 2 of the License, or
+  (at your option) any later version.
+
+  cangaroo is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with cangaroo.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include "SettingsDialog.h"
 
 #include <QVBoxLayout>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QComboBox>
 #include <QCheckBox>
 #include <QSpinBox>
@@ -17,13 +37,14 @@ SettingsDialog::SettingsDialog(QSettings &settings, QActionGroup *languageGroup,
     setMinimumWidth(350);
 
     auto *mainLayout = new QVBoxLayout(this);
-    auto *form = new QFormLayout;
 
-    // --- Theme ---
-    m_themeCombo = new QComboBox(this);
+    // ── Appearance ────────────────────────────────────────────────────────────
+    auto *grpAppearance = new QGroupBox(tr("Appearance"), this);
+    auto *formAppearance = new QFormLayout(grpAppearance);
+
+    m_themeCombo = new QComboBox(grpAppearance);
     QStringList styles = QStyleFactory::keys();
     m_themeCombo->addItems(styles);
-
     const QString currentStyle = settings.value("ui/applicationStyle", QApplication::style()->name()).toString();
     for (int i = 0; i < styles.size(); ++i)
     {
@@ -33,13 +54,11 @@ SettingsDialog::SettingsDialog(QSettings &settings, QActionGroup *languageGroup,
             break;
         }
     }
-    form->addRow(tr("Theme:"), m_themeCombo);
+    formAppearance->addRow(tr("Theme:"), m_themeCombo);
 
-    // --- Language ---
-    m_languageCombo = new QComboBox(this);
+    m_languageCombo = new QComboBox(grpAppearance);
     QString savedLocale = settings.value("ui/language", "en_US").toString();
     int langIdx = 0;
-
     if (languageGroup)
     {
         int i = 0;
@@ -47,45 +66,95 @@ SettingsDialog::SettingsDialog(QSettings &settings, QActionGroup *languageGroup,
         {
             m_languageCombo->addItem(action->text(), action->data());
             if (action->data().toString() == savedLocale)
-            {
                 langIdx = i;
-            }
             ++i;
         }
     }
     m_languageCombo->setCurrentIndex(langIdx);
-    form->addRow(tr("Language:"), m_languageCombo);
+    formAppearance->addRow(tr("Language:"), m_languageCombo);
 
-    // --- Font size ---
-    m_fontSizeSpin = new QSpinBox(this);
+    m_fontSizeSpin = new QSpinBox(grpAppearance);
     m_fontSizeSpin->setRange(6, 24);
     int defaultSize = QApplication::font().pointSize();
     if (defaultSize < 6) { defaultSize = 9; }
     m_fontSizeSpin->setValue(settings.value("ui/fontSize", defaultSize).toInt());
     m_fontSizeSpin->setSuffix(" pt");
-    form->addRow(tr("Font size:"), m_fontSizeSpin);
+    formAppearance->addRow(tr("Font size:"), m_fontSizeSpin);
 
-    // --- Restore window ---
-    m_restoreWindowCheck = new QCheckBox(tr("Restore window layout on startup"), this);
+    mainLayout->addWidget(grpAppearance);
+
+    // ── Behavior ──────────────────────────────────────────────────────────────
+    auto *grpBehavior = new QGroupBox(tr("Behavior"), this);
+    auto *formBehavior = new QFormLayout(grpBehavior);
+
+    m_restoreWindowCheck = new QCheckBox(tr("Restore window layout on startup"), grpBehavior);
     m_restoreWindowCheck->setChecked(settings.value("ui/restoreWindowGeometry", false).toBool());
-    form->addRow(m_restoreWindowCheck);
+    formBehavior->addRow(m_restoreWindowCheck);
 
-    // --- Clear trace on measurement start ---
-    m_clearTraceOnStartCheck = new QCheckBox(tr("Clear trace on measurement start"), this);
+    m_clearTraceOnStartCheck = new QCheckBox(tr("Clear trace on measurement start"), grpBehavior);
     m_clearTraceOnStartCheck->setChecked(settings.value("ui/clearTraceOnStart", true).toBool());
-    form->addRow(m_clearTraceOnStartCheck);
+    formBehavior->addRow(m_clearTraceOnStartCheck);
 
-    // --- UDS 29-bit decoding ---
-    m_uds29BitCheck = new QCheckBox(tr("Decode UDS on 29-bit (extended) CAN IDs"), this);
-    m_uds29BitCheck->setChecked(settings.value("decoder/uds29Bit", true).toBool());
-    form->addRow(m_uds29BitCheck);
-
-    // --- Skip save-workspace prompt ---
-    m_skipSaveWorkspacePromptCheck = new QCheckBox(tr("Do not ask to save workspace on close (always discard)"), this);
+    m_skipSaveWorkspacePromptCheck = new QCheckBox(tr("Do not ask to save workspace on close (always discard)"), grpBehavior);
     m_skipSaveWorkspacePromptCheck->setChecked(settings.value("ui/skipSaveWorkspacePrompt", false).toBool());
-    form->addRow(m_skipSaveWorkspacePromptCheck);
+    formBehavior->addRow(m_skipSaveWorkspacePromptCheck);
 
-    mainLayout->addLayout(form);
+    mainLayout->addWidget(grpBehavior);
+
+    // ── Trace Window ──────────────────────────────────────────────────────────
+    auto *grpTrace = new QGroupBox(tr("Trace Window"), this);
+    auto *formTrace = new QFormLayout(grpTrace);
+
+    m_defaultTraceViewCombo = new QComboBox(grpTrace);
+    m_defaultTraceViewCombo->addItem(tr("Aggregated"), 0);
+    m_defaultTraceViewCombo->addItem(tr("Rolling Log"), 1);
+    m_defaultTraceViewCombo->setCurrentIndex(settings.value("tracewindow/defaultViewMode", 0).toInt());
+    formTrace->addRow(tr("Default view:"), m_defaultTraceViewCombo);
+
+    m_defaultTimestampCombo = new QComboBox(grpTrace);
+    m_defaultTimestampCombo->addItem(tr("Absolute"),       0);
+    m_defaultTimestampCombo->addItem(tr("Absolute (UTC)"), 3);
+    m_defaultTimestampCombo->addItem(tr("Relative"),       1);
+    m_defaultTimestampCombo->addItem(tr("Delta"),          2);
+    {
+        const int savedTs = settings.value("tracewindow/defaultTimestampMode", 2).toInt();
+        for (int i = 0; i < m_defaultTimestampCombo->count(); ++i)
+        {
+            if (m_defaultTimestampCombo->itemData(i).toInt() == savedTs)
+            {
+                m_defaultTimestampCombo->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    formTrace->addRow(tr("Default timestamp:"), m_defaultTimestampCombo);
+
+    m_saveFormatCombo = new QComboBox(grpTrace);
+    const QStringList saveFormats = {
+        "Vector ASC (*.asc)",
+        "Vector MDF4 (*.mf4)",
+        "Linux candump (*.candump)",
+        "PCAP (*.pcap)",
+        "PCAPng (*.pcapng)"
+    };
+    m_saveFormatCombo->addItems(saveFormats);
+    const QString savedFormat = settings.value("ui/preferredSaveFormat", saveFormats.first()).toString();
+    int fmtIdx = saveFormats.indexOf(savedFormat);
+    m_saveFormatCombo->setCurrentIndex(fmtIdx >= 0 ? fmtIdx : 0);
+    formTrace->addRow(tr("Preferred save format:"), m_saveFormatCombo);
+
+    mainLayout->addWidget(grpTrace);
+
+    // ── Decoders ──────────────────────────────────────────────────────────────
+    auto *grpDecoders = new QGroupBox(tr("Decoders"), this);
+    auto *formDecoders = new QFormLayout(grpDecoders);
+
+    m_uds29BitCheck = new QCheckBox(tr("Decode UDS on 29-bit (extended) CAN IDs"), grpDecoders);
+    m_uds29BitCheck->setChecked(settings.value("decoder/uds29Bit", true).toBool());
+    formDecoders->addRow(m_uds29BitCheck);
+
+    mainLayout->addWidget(grpDecoders);
+
     mainLayout->addSpacing(10);
 
     // --- Buttons ---
@@ -128,4 +197,19 @@ bool SettingsDialog::uds29BitEnabled() const
 bool SettingsDialog::skipSaveWorkspacePrompt() const
 {
     return m_skipSaveWorkspacePromptCheck->isChecked();
+}
+
+QString SettingsDialog::preferredSaveFormat() const
+{
+    return m_saveFormatCombo->currentText();
+}
+
+int SettingsDialog::defaultTraceViewMode() const
+{
+    return m_defaultTraceViewCombo->currentData().toInt();
+}
+
+int SettingsDialog::defaultTimestampMode() const
+{
+    return m_defaultTimestampCombo->currentData().toInt();
 }

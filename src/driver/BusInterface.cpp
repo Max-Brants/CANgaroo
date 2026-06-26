@@ -1,6 +1,7 @@
 /*
 
   Copyright (c) 2015, 2016 Hubert Denkmair <hubert@denkmair.de>
+  Copyright (c) 2026 Schildkroet
 
   This file is part of cangaroo.
 
@@ -110,22 +111,19 @@ uint64_t BusInterface::getNumBits()
 
 void BusInterface::addFrameBits(const BusMessage &msg)
 {
-    uint32_t dlc = msg.getLength();
-    uint32_t bits = 47 + (dlc * 8); // Std CAN overhead + data bits
+    uint32_t bits;
 
-    if (msg.isExtended()) {
-        bits += 18 + 2; // Extended ID (18 additional bits + SRR/IDE overhead)
+    if (msg.busType() == BusType::LIN) {
+        // Break(14) + Sync(10) + PID(10) + data bytes (10 each) + checksum(10)
+        bits = 44 + static_cast<uint32_t>(msg.getLength()) * 10;
+    } else {
+        uint32_t dlc = msg.getLength();
+        bits = 47 + (dlc * 8);
+        if (msg.isExtended()) bits += 18 + 2;
+        if (msg.isFD())       bits += 20;
+        bits += bits / 5; // Approximate bit stuffing
     }
 
-    if (msg.isFD()) {
-        // Simple FD approximation:
-        // Standard Frame is ~126-150 bits total for standard or ~500+ for FD.
-        // For simplicity, we use the same formula but adjusted.
-        // Actually, FD has significantly more overhead.
-        bits += 20; // Extra overhead bits for FD
-    }
-
-    bits += bits / 5; // Approximate bit stuffing
     _totalBits += bits;
 }
 

@@ -1,6 +1,7 @@
 /*
 
   Copyright (c) 2015, 2016 Hubert Denkmair <hubert@denkmair.de>
+  Copyright (c) 2026 Schildkroet
 
   This file is part of CANgaroo.
 
@@ -26,6 +27,7 @@
 #include <QDomDocument>
 #include <QHeaderView>
 #include <QScrollBar>
+#include <QSettings>
 #include <QSortFilterProxyModel>
 
 #include "core/Backend.h"
@@ -132,7 +134,15 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
     ui->cbTimestampMode->addItem(tr("Absolute (UTC)"), timestamp_mode_absolute_utc);
     ui->cbTimestampMode->addItem(tr("Relative"), timestamp_mode_relative);
     ui->cbTimestampMode->addItem(tr("Delta"), timestamp_mode_delta);
-    setTimestampMode(timestamp_mode_delta);
+
+    QSettings appSettings;
+    const auto defaultTsMode = static_cast<timestamp_mode_t>(
+        appSettings.value("tracewindow/defaultTimestampMode", timestamp_mode_delta).toInt());
+    setTimestampMode(defaultTsMode);
+
+    const auto defaultViewMode = static_cast<mode_t>(
+        appSettings.value("tracewindow/defaultViewMode", mode_aggregated).toInt());
+    _tabModes[Cat_Aggregated] = defaultViewMode;
 
     connect(ui->filterLineEdit, &QLineEdit::textChanged, this, &TraceWindow::on_cbFilterChanged);
     connect(ui->TraceClearpushButton, &QPushButton::released, this, &TraceWindow::on_cbTraceClearpushButton);
@@ -143,7 +153,7 @@ TraceWindow::TraceWindow(QWidget *parent, Backend &backend) :
     _scrollTimer.setSingleShot(true);
     connect(&_scrollTimer, &QTimer::timeout, this, &TraceWindow::doScrollToBottom);
 
-    setMode(mode_aggregated);
+    setMode(defaultViewMode);
 }
 
 TraceWindow::~TraceWindow()

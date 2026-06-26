@@ -12,6 +12,35 @@ ProtocolManager::ProtocolManager(Backend *backend) {
 DecodeStatus ProtocolManager::processFrame(const BusMessage& frame, ProtocolMessage& outMsg) {
     DecodeStatus status = DecodeStatus::Ignored;
 
+    // LIN diagnostic frames (ISO 17987): 0x3C = master request, 0x3D = slave response
+    // On-bus layout: [NAD, PCI, SID, data...] = 8 bytes. Strip NAD and pass the rest
+    // (PCI + payload) to the UDS decoder as an ISO 15765-2 single-frame transport PDU.
+    // The firmware adds PCI automatically based on payload length; callers supply [SID, data...].
+    if (frame.busType() == BusType::LIN)
+    {
+        const uint32_t linId = frame.getId();
+        if ((linId == 0x3C || linId == 0x3D) && frame.getLength() >= 3)
+        {
+            BusMessage synthetic;
+            synthetic.setInterfaceId(frame.getInterfaceId());
+            synthetic.setTimestamp_us(frame.getTimestamp_us());
+            synthetic.setRX(frame.isRX());
+            const uint8_t synLen = static_cast<uint8_t>(frame.getLength() - 1u);
+            synthetic.setLength(synLen);
+            for (uint8_t i = 0; i < synLen; ++i)
+                synthetic.setByte(i, frame.getByte(static_cast<uint8_t>(i + 1u)));
+
+            status = m_udsDecoder->tryDecode(synthetic, outMsg);
+            if (status == DecodeStatus::Completed)
+            {
+                outMsg.rawFrames = {frame};
+                outMsg.timestamp = static_cast<uint64_t>(frame.getFloatTimestamp() * 1000000.0);
+                outMsg.globalIndex = ++m_msgCounter;
+            }
+        }
+        return status;
+    }
+
     if (frame.isExtended()) {
         status = m_j1939Decoder->tryDecode(frame, outMsg);
 

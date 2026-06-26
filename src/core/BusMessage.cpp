@@ -20,8 +20,6 @@
 
 */
 
-
-
 #include "BusMessage.h"
 #include "core/portable_endian.h"
 
@@ -445,8 +443,10 @@ QString BusMessage::getErrorFlagsString() const
         { BusError::Form,     "FORM"    },
         { BusError::BusOff,   "BUSOFF"  },
         { BusError::Overrun,  "OVERRUN" },
-        { BusError::TxTimeout,"TIMEOUT" },
-        { BusError::Generic,  "ERROR"   },
+        { BusError::TxTimeout,        "TIMEOUT"        },
+        { BusError::LinNotResponded,  "NOT RESPONDED"  },
+        { BusError::LinChecksumError, "CHECKSUM ERROR" },
+        { BusError::Generic,          "ERROR"          },
     };
     QStringList parts;
     for (const auto &e : kNames)

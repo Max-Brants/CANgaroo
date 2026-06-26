@@ -1,6 +1,7 @@
 /*
 
   Copyright (c) 2016 Hubert Denkmair <hubert@denkmair.de>
+  Copyright (c) 2026 Schildkroet
 
   This file is part of cangaroo.
 
@@ -22,6 +23,7 @@
 #pragma once
 
 #include "core/ConfigurableWidget.h"
+#include "driver/BusInterface.h"
 #include <QEvent>
 #include <QMap>
 
@@ -82,6 +84,7 @@ private:
         qint64 lastTime;
     };
     QMap<void*, InterfaceStats> _lastStats;
+    QMap<BusInterface*, unsigned> _effectiveBitrates;
 
     virtual QSize sizeHint() const override;
 };

@@ -527,6 +527,27 @@ bool MainWindow::loadWorkspaceTab(QDomElement el)
         if (sdo && !sdoEl.isNull())
             sdo->loadXML(backend(), sdoEl);
 
+        // Load GraphWindow dock content (active signals, view type, duration) if present.
+        GraphWindow *graph = mw->findChild<GraphWindow *>();
+        QDomElement graphEl = el.firstChildElement("graphwindow");
+        if (graph && !graphEl.isNull())
+            graph->loadXML(backend(), graphEl);
+
+        // Recreate LinControlWindow dock if it was open, and restore diag requests.
+        QDomElement linEl = el.firstChildElement("lincontrolwindow");
+        if (!linEl.isNull())
+        {
+            QDockWidget *linDock = addLinControlWidget(mw);
+            LinControlWindow *lin = linDock ? qobject_cast<LinControlWindow *>(linDock->widget()) : nullptr;
+            if (lin)
+                lin->loadXML(backend(), linEl);
+        }
+
+        // Recreate GpioControlWindow dock if it was open.
+        QDomElement gpioEl = el.firstChildElement("gpiocontrolwindow");
+        if (!gpioEl.isNull())
+            addGpioControlWidget(mw);
+
         // Restore dock layout state (splits, tabification, sizes).
         // Deferred so it runs after the default layout timer from createTraceWindow().
         const QString dockState = el.attribute("dockstate");
@@ -671,6 +692,33 @@ bool MainWindow::saveWorkspaceToFile(const QString &filename)
             QDomElement sdoEl = doc.createElement("sdowindow");
             sdo->saveXML(backend(), doc, sdoEl);
             tabEl.appendChild(sdoEl);
+        }
+
+        // Save GraphWindow dock content (active signals, view type, duration).
+        GraphWindow *graph = w->findChild<GraphWindow *>();
+        if (graph)
+        {
+            QDomElement graphEl = doc.createElement("graphwindow");
+            graph->saveXML(backend(), doc, graphEl);
+            tabEl.appendChild(graphEl);
+        }
+
+        // Save LinControlWindow dock content (diag requests) if present.
+        LinControlWindow *lin = w->findChild<LinControlWindow *>();
+        if (lin)
+        {
+            QDomElement linEl = doc.createElement("lincontrolwindow");
+            lin->saveXML(backend(), doc, linEl);
+            tabEl.appendChild(linEl);
+        }
+
+        // Save GpioControlWindow dock if present (marks it should be reopened).
+        GpioControlWindow *gpio = w->findChild<GpioControlWindow *>();
+        if (gpio)
+        {
+            QDomElement gpioEl = doc.createElement("gpiocontrolwindow");
+            gpio->saveXML(backend(), doc, gpioEl);
+            tabEl.appendChild(gpioEl);
         }
 
         tabsRoot.appendChild(tabEl);
@@ -1109,7 +1157,7 @@ void MainWindow::stopMeasurement()
 void MainWindow::saveTraceToFile()
 {
     const QString filters("Vector ASC (*.asc);;Vector MDF4 (*.mf4);;Linux candump (*.candump);;PCAP (*.pcap);;PCAPng (*.pcapng)");
-    const QString defaultFilter("Vector ASC (*.asc)");
+    const QString defaultFilter = settings.value("ui/preferredSaveFormat", "Vector ASC (*.asc)").toString();
 
     QFileDialog fileDialog(nullptr, tr("Save Trace to file"), QDir::currentPath(), filters);
     fileDialog.setAcceptMode(QFileDialog::AcceptSave);
@@ -1303,6 +1351,13 @@ void MainWindow::showSettingsDialog()
 
     // Apply skip-save-prompt setting.
     settings.setValue("ui/skipSaveWorkspacePrompt", dlg.skipSaveWorkspacePrompt());
+
+    // Apply preferred save format.
+    settings.setValue("ui/preferredSaveFormat", dlg.preferredSaveFormat());
+
+    // Apply trace window defaults.
+    settings.setValue("tracewindow/defaultViewMode",      dlg.defaultTraceViewMode());
+    settings.setValue("tracewindow/defaultTimestampMode", dlg.defaultTimestampMode());
 }
 
 #if defined(_WIN32)

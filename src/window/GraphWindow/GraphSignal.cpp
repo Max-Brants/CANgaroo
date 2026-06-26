@@ -48,8 +48,15 @@ GraphSignal::GraphSignal(const CanOpenObjectEntry *entry, quint8 nodeId)
     Q_ASSERT(entry != nullptr);
 }
 
+GraphSignal::GraphSignal(uint16_t interfaceId, unsigned bitrate, const QString &label)
+    : _data(BusLoadData{interfaceId, bitrate, label})
+{
+}
+
 QString GraphSignal::name() const
 {
+    if (isBusLoad())
+        return std::get<BusLoadData>(_data).label;
     if (isLin())
         return std::get<LinData>(_data).signal->name();
     if (isSdo()) {
@@ -64,6 +71,8 @@ QString GraphSignal::name() const
 
 QString GraphSignal::unit() const
 {
+    if (isBusLoad())
+        return QStringLiteral("%");
     if (isLin())
         return std::get<LinData>(_data).signal->unit();
     if (isSdo())
@@ -73,6 +82,8 @@ QString GraphSignal::unit() const
 
 double GraphSignal::minValue() const
 {
+    if (isBusLoad())
+        return 0.0;
     if (isLin())
         return std::get<LinData>(_data).signal->minValue();
     if (isSdo())
@@ -82,6 +93,8 @@ double GraphSignal::minValue() const
 
 double GraphSignal::maxValue() const
 {
+    if (isBusLoad())
+        return 100.0;
     if (isLin())
         return std::get<LinData>(_data).signal->maxValue();
     if (isSdo())
@@ -91,6 +104,8 @@ double GraphSignal::maxValue() const
 
 QString GraphSignal::parentName() const
 {
+    if (isBusLoad())
+        return QStringLiteral("Bus Load");
     if (isLin()) {
         return std::get<LinData>(_data).frame->name();
     }
@@ -103,7 +118,7 @@ QString GraphSignal::parentName() const
 
 QString GraphSignal::comment() const
 {
-    if (isLin() || isSdo())
+    if (isBusLoad() || isLin() || isSdo())
         return {};
     return std::get<CanData>(_data).signal->comment();
 }
@@ -118,8 +133,27 @@ bool GraphSignal::isSdo() const noexcept
     return std::holds_alternative<SdoData>(_data);
 }
 
+bool GraphSignal::isBusLoad() const noexcept
+{
+    return std::holds_alternative<BusLoadData>(_data);
+}
+
+uint16_t GraphSignal::busLoadInterfaceId() const noexcept
+{
+    if (!isBusLoad()) return 0xFFFF;
+    return std::get<BusLoadData>(_data).interfaceId;
+}
+
+unsigned GraphSignal::busLoadBitrate() const noexcept
+{
+    if (!isBusLoad()) return 0;
+    return std::get<BusLoadData>(_data).bitrate;
+}
+
 bool GraphSignal::isPresentInMessage(const BusMessage &msg) const
 {
+    if (isBusLoad())
+        return false; // handled separately in the decoder worker
     if (isLin()) {
         const auto &d = std::get<LinData>(_data);
         return msg.busType() == BusType::LIN
@@ -140,6 +174,8 @@ bool GraphSignal::isPresentInMessage(const BusMessage &msg) const
 
 double GraphSignal::extractPhysicalFromMessage(const BusMessage &msg) const
 {
+    if (isBusLoad())
+        return 0.0; // handled separately in the decoder worker
     if (isLin()) {
         const auto &d = std::get<LinData>(_data);
         std::span<const uint8_t> data(msg.getData(), msg.getLength());
@@ -158,7 +194,7 @@ double GraphSignal::extractPhysicalFromMessage(const BusMessage &msg) const
 
 CanDbSignal *GraphSignal::asCanSignal() const noexcept
 {
-    if (isLin() || isSdo()) return nullptr;
+    if (!std::holds_alternative<CanData>(_data)) return nullptr;
     return std::get<CanData>(_data).signal;
 }
 

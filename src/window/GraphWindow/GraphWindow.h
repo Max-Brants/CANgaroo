@@ -59,11 +59,14 @@ signals:
     void dataDecoded(const QMap<GraphSignal*, DecodedSignalData>& newPoints, double globalStartTime);
 
 private:
+    struct BusLoadEntry { double timestamp; uint32_t bits; };
+
     Backend& _backend;
     int _lastProcessedIdx;
     double _globalStartTime;
     QList<GraphSignal*> _activeSignals;
     QMap<GraphSignal*, BusInterfaceIdList> _signalInterfaces;
+    QMap<GraphSignal*, QList<BusLoadEntry>> _busLoadWindows;
     QMutex _mutex;
 };
 
@@ -151,6 +154,16 @@ private:
 
     void addSdoAddNodePlaceholder(class QTreeWidgetItem *sdoRoot, MeasurementNetwork *network,
                                    const QString &path, const QVariant &interfaceData);
+
+    void applyPendingSignals();
+
+    struct PendingSignal {
+        QString type;   // "can", "lin", "sdo", "busload"
+        QString parent; // message/frame name, or "" for busload
+        QString name;   // signal name or full bus-load label
+        QColor  color;
+    };
+    QList<PendingSignal> _pendingSignals;
 
     QThread* _decoderThread = nullptr;
     SignalDecoderWorker* _decoderWorker = nullptr;

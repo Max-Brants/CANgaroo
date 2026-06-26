@@ -151,9 +151,9 @@
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="cbWakeupOnBus">
+        <widget class="QCheckBox" name="cbListenOnly">
          <property name="text">
-          <string>Send Wakeup on Bus Activity</string>
+          <string>Listen Only (Slave)</string>
          </property>
         </widget>
        </item>

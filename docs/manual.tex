@@ -132,7 +132,7 @@
   \textcolor{canblue}{\rule{0.6\textwidth}{1.5pt}}\\[3em]
 
   {\LARGE\bfseries User Manual}\\[1em]
-  {\large Version 0.1}\\[4em]
+  {\large Version 0.2}\\[4em]
 
   {\large Open-source automotive bus analysis software}\\[0.5em]
   {\large for CAN, CAN-FD, and LIN}\\[5em]
@@ -1011,6 +1011,29 @@ LDF (\textit{LIN Description File}) describes LIN bus networks. The parser suppo
   \item LIN enhanced checksum calculation for correct ASC export
 \end{itemize}
 
+\subsection{LIN Diagnostics}
+
+LIN-capable interfaces expose a diagnostics API for node configuration and
+identification (as defined by LIN specification section~4.2).
+
+\begin{description}[leftmargin=2em, style=nextline]
+  \item[Diagnostic Request (master)]
+    \texttt{sendLinDiagRequest(nad, data, len)} sends a master-request frame
+    to the node with the given NAD (Node Address for Diagnostics, 0x01--0x7E).
+    The payload follows the LIN diagnostic frame format (up to 6 data bytes).
+
+  \item[Diagnostic Response (slave)]
+    \texttt{sendLinDiagResponse(nad, data, len)} sends a slave-response frame
+    on interfaces that advertise the \texttt{capability\_lin\_slave} flag.
+    Use this to answer a master request when CANgaroo is acting as a LIN slave node.
+\end{description}
+
+\begin{notebox}
+Both calls are no-ops on interfaces that do not support the corresponding
+LIN capability flag. Check the interface capabilities in the Setup Dialog
+before relying on diagnostic operations.
+\end{notebox}
+
 \subsection{Loading Databases}
 
 Databases are loaded per network in the Setup Dialog (Section~\ref{sec:setup}).
@@ -1118,8 +1141,10 @@ file in the selected format.
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Application Settings}
 
-Open \menu{File \textrightarrow{} Settings} (\key{Ctrl+Alt+S}) to adjust
-application-wide preferences.
+Open \menu{File \textrightarrow{} Settings\ldots} to adjust application-wide
+preferences. The dialog is organised into four groups.
+
+\subsection*{Appearance}
 
 \begin{table}[h]
   \centering
@@ -1127,11 +1152,73 @@ application-wide preferences.
     \toprule
     \textbf{Setting} & \textbf{Description} \\
     \midrule
-    Theme            & Switch between \ui{Light} and \ui{Dark} visual themes \\
-    Language         & Select the UI language (restart may be required) \\
-    Restore Windows  & Restore dock layout and window geometry on next launch \\
-    Clear on Start   & Automatically clear the trace when a measurement starts \\
-    Font Size        & Adjust the application-wide font point size \\
+    Theme     & Qt style applied to the whole application.
+                The available entries depend on the platform
+                (e.g.\ \textit{Fusion}, \textit{Windows}, \textit{kvantum}). \\
+    Language  & UI language. A restart is required for the change to take full
+                effect. \\
+    Font size & Application-wide font size in points (range: 6\,--\,24\,pt). \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection*{Behavior}
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Setting} & \textbf{Description} \\
+    \midrule
+    Restore window layout on startup
+      & When checked, CANgaroo restores the dock layout and window
+        geometry from the previous session. \\
+    Clear trace on measurement start
+      & When checked, the trace buffer is automatically cleared each time
+        a new measurement starts. \\
+    Do not ask to save workspace on close
+      & When checked, CANgaroo closes without prompting to save unsaved
+        workspace changes (changes are silently discarded). \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection*{Trace Window}
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Setting} & \textbf{Description} \\
+    \midrule
+    Default view
+      & The initial display mode for newly opened Trace Views:
+        \ui{Aggregated} (one row per ID, updated in-place) or
+        \ui{Rolling Log} (chronological, append-only). \\
+    Default timestamp
+      & The timestamp column format used when a Trace View is first opened:
+        \ui{Absolute} (local wall-clock time),
+        \ui{Absolute (UTC)} (wall-clock in UTC),
+        \ui{Relative} (seconds since measurement start), or
+        \ui{Delta} (time since the previous frame of the same ID). \\
+    Preferred save format
+      & Pre-selects the output format in the \menu{Save Trace} dialog.
+        Choices: Vector ASC, Vector MDF4, Linux candump, PCAP, PCAPng. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection*{Decoders}
+
+\begin{table}[h]
+  \centering
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    \textbf{Setting} & \textbf{Description} \\
+    \midrule
+    Decode UDS on 29-bit (extended) CAN IDs
+      & When checked, the UDS/ISO-TP decoder also processes frames with
+        29-bit extended IDs (in addition to the standard 11-bit IDs). \\
     \bottomrule
   \end{tabularx}
 \end{table}
@@ -1150,7 +1237,7 @@ application-wide preferences.
   \key{Ctrl+O}           & Open Workspace \\
   \key{Ctrl+S}           & Save Workspace \\
   \key{Ctrl+Shift+S}     & Save Workspace As \\
-  \key{Ctrl+Alt+S}       & Setup Interface / Settings \\
+  \key{Ctrl+Alt+S}       & Setup Interface \\
   \key{Ctrl+Shift+T}     & New Trace View \\
   \key{Ctrl+Shift+L}     & New Log View \\
   \key{Ctrl+Shift+G}     & New Graph View \\

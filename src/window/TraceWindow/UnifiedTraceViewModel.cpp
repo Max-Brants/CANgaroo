@@ -2,6 +2,7 @@
 #include "core/BusTrace.h"
 #include "core/Backend.h"
 #include "core/DBC/LinFrame.h"
+#include "core/DBC/CanDbMessage.h"
 #include <QColor>
 #include <QSet>
 #include <QDateTime>
@@ -103,6 +104,9 @@ BusMessage UnifiedTraceViewModel::getMessage(const QModelIndex &index) const
     if (item->isProtocol()) {
         const ProtocolMessage& pmsg = item->protocolMessage();
         return pmsg.rawFrames.isEmpty() ? BusMessage() : pmsg.rawFrames.first();
+    } else if (item->isSignal()) {
+        UnifiedTraceItem *parent = item->parentItem();
+        return parent ? parent->rawFrame() : BusMessage();
     } else if (item->isMetadata()) {
         UnifiedTraceItem *parent = item->parentItem();
         if (parent && parent->isProtocol()) {
@@ -131,7 +135,7 @@ QVariant UnifiedTraceViewModel::data(const QModelIndex &index, int role) const
         {
             if (index.column() != column_data) { return QVariant(); }
             UnifiedTraceItem *item = static_cast<UnifiedTraceItem*>(index.internalPointer());
-            if (!item || item->isProtocol() || item->isMetadata()) { return QVariant(); }
+            if (!item || item->isProtocol() || item->isMetadata() || item->isSignal()) { return QVariant(); }
             const BusMessage &cur  = item->rawFrame();
             const BusMessage &prev = item->prevSameIdFrame();
             if (prev.getLength() == 0) { return QVariant(); }
@@ -238,6 +242,20 @@ void UnifiedTraceViewModel::processNewMessages()
 
                 item->setPrevSameIdFrame(m_prevMessageByKey.value(dkey));
                 m_prevMessageByKey[dkey] = msg;
+
+                if (msg.busType() == BusType::LIN) {
+                    LinFrame *linFrame = backend()->findLinFrame(msg);
+                    if (linFrame) {
+                        for (int s = 0; s < linFrame->signalList().size(); ++s)
+                            item->appendChild(std::make_shared<UnifiedTraceItem>(s, item.get()));
+                    }
+                } else {
+                    CanDbMessage *dbmsg = backend()->findDbMessage(msg);
+                    if (dbmsg) {
+                        for (int s = 0; s < dbmsg->getSignals().length(); ++s)
+                            item->appendChild(std::make_shared<UnifiedTraceItem>(s, item.get()));
+                    }
+                }
 
                 newItems.append(item);
             }
@@ -446,6 +464,11 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
                 return "";
             default: return QVariant();
         }
+    } else if (item->isSignal()) {
+        UnifiedTraceItem *parent = item->parentItem();
+        if (!parent) return QVariant();
+        if (index.column() == column_index) return QVariant();
+        return data_DisplayRole_Signal(index, role, parent->rawFrame());
     } else if (item->isMetadata()) {
         switch (index.column()) {
             case column_timestamp:
@@ -496,7 +519,7 @@ QVariant UnifiedTraceViewModel::data_DisplayRole(const QModelIndex &index, [[may
                 if (msg.isBRS())      t += QStringLiteral(".BRS");
                 return t;
             }
-            case column_canid: return QString("0x%1").arg(msg.getId(), 0, 16);
+            case column_canid: return QString("0x%1").arg(msg.getId(), 0, 16).toUpper();
             case column_dlc: return msg.getLength();
             case column_data: return msg.getDataHexString();
             case column_name:

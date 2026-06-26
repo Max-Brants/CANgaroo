@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2024 Schildkroet
+  Copyright (c) 2024 - 2026 Schildkroet
 
   This file is part of CANgaroo.
 
@@ -95,6 +95,8 @@ public:
     bool isOpen() override;
 
     void sendLinSleepWakeup(bool wakeup) override;
+    void setLinScheduleTable(uint8_t tableIndex) override;
+    void sendLinDiagRequest(uint8_t nad, const uint8_t *data, uint8_t len) override;
     void sendMessage(const BusMessage &msg) override;
     bool readMessage(QList<BusMessage> &msglist, unsigned int timeout_ms) override;
 

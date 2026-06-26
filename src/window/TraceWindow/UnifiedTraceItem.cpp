@@ -33,6 +33,14 @@ UnifiedTraceItem::UnifiedTraceItem(const QString& name, const QString& value, Un
     }
 }
 
+UnifiedTraceItem::UnifiedTraceItem(int /*signalIndex*/, UnifiedTraceItem* parent)
+    : m_parentItem(parent), m_isProtocol(false), m_isSignal(true), m_row(-1)
+{
+    if (m_parentItem) {
+        m_timestamp = m_parentItem->timestamp();
+    }
+}
+
 UnifiedTraceItem::~UnifiedTraceItem()
 {
 }

@@ -43,8 +43,8 @@ GenericLinSetupPage::GenericLinSetupPage(QWidget *parent)
 
     connect(ui->cbBaudrate,        &QComboBox::currentIndexChanged, this, [this]() { updateUI(); });
     connect(ui->cbProtocolVersion, &QComboBox::currentIndexChanged, this, [this]() { updateUI(); });
-    connect(ui->cbChecksumClassic, &QCheckBox::stateChanged,        this, [this]() { updateUI(); });
-    connect(ui->cbWakeupOnBus,     &QCheckBox::stateChanged,        this, [this]() { updateUI(); });
+    connect(ui->cbChecksumClassic, &QCheckBox::stateChanged, this, [this]() { updateUI(); });
+    connect(ui->cbListenOnly,      &QCheckBox::stateChanged, this, [this]() { updateUI(); });
 
     connect(ui->cbLdfSelect,      &QComboBox::currentIndexChanged, this, &GenericLinSetupPage::onLdfSelected);
     connect(ui->cbScheduleTable,  &QComboBox::currentIndexChanged, this, [this]() { updateUI(); });
@@ -95,7 +95,10 @@ void GenericLinSetupPage::onShowInterfacePage(SetupDialog &dlg, MeasurementInter
     ui->cbProtocolVersion->setCurrentIndex(static_cast<int>(_mi->linProtocolVersion()));
 
     ui->cbChecksumClassic->setChecked(_mi->linChecksumClassic());
-    ui->cbWakeupOnBus->setChecked(_mi->linWakeupOnBus());
+
+    const bool capSlave = (_linCaps & BusInterface::capability_lin_slave) != 0;
+    ui->cbListenOnly->setVisible(capSlave);
+    ui->cbListenOnly->setChecked(capSlave && _mi->linListenOnly());
 
     // Populate and enable/disable the LDF group
     populateLdfCombo();
@@ -110,7 +113,9 @@ void GenericLinSetupPage::updateUI()
         return;
 
     _mi->setLinChecksumClassic(ui->cbChecksumClassic->isChecked());
-    _mi->setLinWakeupOnBus(ui->cbWakeupOnBus->isChecked());
+
+    const bool listenOnly = ui->cbListenOnly->isVisible() && ui->cbListenOnly->isChecked();
+    _mi->setLinListenOnly(listenOnly);
 
     // LDF group
     if (ui->gbLdfConfig->isEnabled())
@@ -119,7 +124,19 @@ void GenericLinSetupPage::updateUI()
         _mi->setLinProtocolVersion(static_cast<LinProtocolVersion>(ui->cbProtocolVersion->currentIndex()));
         _mi->setLinScheduleTable(ui->cbScheduleTable->currentText());
         _mi->setLinScheduleTableIndex(static_cast<uint8_t>(ui->cbScheduleTable->currentIndex()));
-        _mi->setLinNodeMode(ui->rbMaster->isChecked() ? LinNodeMode::Master : LinNodeMode::Slave);
+
+        if (listenOnly)
+        {
+            ui->rbSlave->setChecked(true);
+            ui->rbMaster->setEnabled(false);
+            _mi->setLinNodeMode(LinNodeMode::Slave);
+        }
+        else
+        {
+            const bool capMaster = (_linCaps & BusInterface::capability_lin_master) != 0;
+            ui->rbMaster->setEnabled(capMaster);
+            _mi->setLinNodeMode(ui->rbMaster->isChecked() ? LinNodeMode::Master : LinNodeMode::Slave);
+        }
         _mi->setLinSlaveNode(ui->rbSlave->isChecked() ? ui->cbSlaveNode->currentText() : QString());
     }
 }

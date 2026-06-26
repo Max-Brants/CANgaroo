@@ -11,6 +11,7 @@ public:
     UnifiedTraceItem(const BusMessage& frame, UnifiedTraceItem* parent = nullptr);
     UnifiedTraceItem(const ProtocolMessage& msg, UnifiedTraceItem* parent = nullptr);
     UnifiedTraceItem(const QString& name, const QString& value, UnifiedTraceItem* parent = nullptr);
+    UnifiedTraceItem(int signalIndex, UnifiedTraceItem* parent); // signal child
     ~UnifiedTraceItem();
 
     void updateProtocolMessage(const ProtocolMessage& msg);
@@ -25,6 +26,7 @@ public:
 
     bool isProtocol() const { return m_isProtocol; }
     bool isMetadata() const { return m_isMetadata; }
+    bool isSignal() const { return m_isSignal; }
     const BusMessage& rawFrame() const { return m_rawFrame; }
     const ProtocolMessage& protocolMessage() const { return m_protocolMessage; }
     QString metadataName() const { return m_metadataName; }
@@ -46,6 +48,7 @@ private:
     
     bool m_isProtocol;
     bool m_isMetadata = false;
+    bool m_isSignal = false;
     BusMessage m_rawFrame;
     ProtocolMessage m_protocolMessage;
     QString m_metadataName;

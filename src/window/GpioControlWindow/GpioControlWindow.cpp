@@ -1,6 +1,6 @@
 /*
 
-  Copyright (c) 2024 Schildkroet
+  Copyright (c) 2024 - 2026 Schildkroet
 
   This file is part of CANgaroo.
 
@@ -21,7 +21,6 @@
 
 #include "GpioControlWindow.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QGridLayout>
 #include <QGroupBox>
@@ -115,6 +114,9 @@ void GpioControlWindow::clearRows()
 {
     for (auto *panel : std::as_const(_panels))
     {
+        if (panel->enabled)
+            panel->handler->GpioSetConfig(false, static_cast<uint8_t>(panel->cycleSpin->value()), panel->dirMask);
+
         panel->handler->disconnect(this);
         panel->container->deleteLater();
         delete panel;
@@ -143,22 +145,18 @@ void GpioControlWindow::buildDevicePanel(GrIPHandler *handler, const QString &de
     cfgLayout->setContentsMargins(0, 0, 0, 0);
     cfgLayout->setSpacing(6);
 
-    panel->enableChk = new QCheckBox(tr("Enable GPIO monitoring"), cfgBar);
-
-    auto *cycleLabel = new QLabel(tr("Cycle (ms):"), cfgBar);
+    auto *cycleLabel = new QLabel(tr("Update interval (ms):"), cfgBar);
 
     panel->cycleSpin = new QSpinBox(cfgBar);
-    panel->cycleSpin->setRange(5, 255);
+    panel->cycleSpin->setRange(5, 500);
     panel->cycleSpin->setValue(50);
-    panel->cycleSpin->setToolTip(tr("Auto-report interval in ms (minimum 5)"));
+    panel->cycleSpin->setToolTip(tr("How often the device reports GPIO state (minimum 5 ms)"));
 
-    panel->applyBtn = new QPushButton(tr("Apply"), cfgBar);
+    panel->toggleBtn = new QPushButton(tr("Enable"), cfgBar);
 
-    cfgLayout->addWidget(panel->enableChk);
-    cfgLayout->addSpacing(8);
     cfgLayout->addWidget(cycleLabel);
     cfgLayout->addWidget(panel->cycleSpin);
-    cfgLayout->addWidget(panel->applyBtn);
+    cfgLayout->addWidget(panel->toggleBtn);
     cfgLayout->addStretch();
 
     outerLayout->addWidget(cfgBar);
@@ -229,8 +227,8 @@ void GpioControlWindow::buildDevicePanel(GrIPHandler *handler, const QString &de
     outerLayout->addWidget(gridWidget);
     _rowLayout->addWidget(groupBox);
 
-    connect(panel->applyBtn, &QPushButton::clicked, this,
-            [this, panel]() { onApplyClicked(panel); });
+    connect(panel->toggleBtn, &QPushButton::clicked, this,
+            [this, panel]() { onToggleClicked(panel); });
 
     connect(handler, &GrIPHandler::gpioUpdated, this,
             [this, panel](uint16_t pinState, QVector<uint16_t> analogValues)
@@ -241,25 +239,31 @@ void GpioControlWindow::buildDevicePanel(GrIPHandler *handler, const QString &de
     _panels.insert(handler, panel);
 }
 
-void GpioControlWindow::onApplyClicked(GpioDevicePanel *panel)
+void GpioControlWindow::onToggleClicked(GpioDevicePanel *panel)
 {
-    uint16_t dirMask = 0;
-    for (const GpioPinRow &row : std::as_const(panel->pinRows))
+    panel->enabled = !panel->enabled;
+
+    if (panel->enabled)
     {
-        if (row.dirCombo->currentIndex() == 1)
-            dirMask |= static_cast<uint16_t>(1u << row.pin);
+        uint16_t dirMask = 0;
+        for (const GpioPinRow &row : std::as_const(panel->pinRows))
+        {
+            if (row.dirCombo->currentIndex() == 1)
+                dirMask |= static_cast<uint16_t>(1u << row.pin);
+        }
+        panel->dirMask = dirMask;
     }
-    panel->dirMask = dirMask;
-
-    const bool enable = panel->enableChk->isChecked();
 
     for (const GpioPinRow &row : std::as_const(panel->pinRows))
-        row.dirCombo->setEnabled(!enable);
+        row.dirCombo->setEnabled(!panel->enabled);
+
+    panel->cycleSpin->setEnabled(!panel->enabled);
+    panel->toggleBtn->setText(panel->enabled ? tr("Disable") : tr("Enable"));
 
     panel->handler->GpioSetConfig(
-        enable,
+        panel->enabled,
         static_cast<uint8_t>(panel->cycleSpin->value()),
-        dirMask);
+        panel->dirMask);
 }
 
 void GpioControlWindow::onOutputToggled(GpioDevicePanel *panel, int pin)
